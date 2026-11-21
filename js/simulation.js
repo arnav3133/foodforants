@@ -2,7 +2,9 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const rand = (min, max) => min + Math.random() * (max - min);
 
 export function createSimulation(canvas) {
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) || canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
   let width = 1, height = 1, dpr = 1;
   let raf = 0, lastTime = 0, lastRenderTime = 0, accumulator = 0;
   let paused = false, hiddenPause = false, wasPaused = false;
@@ -21,6 +23,7 @@ export function createSimulation(canvas) {
   const eatingFrequencyControl = document.getElementById('eating-frequency');
   const resistanceControl = document.getElementById('resistance');
   const deformationControl = document.getElementById('deform');
+  const trailsControl = document.getElementById('trails');
 
   // Bite radius is measured in logical mask pixels; resistance still controls cadence.
   const material = {
@@ -53,9 +56,6 @@ export function createSimulation(canvas) {
       const spriteCtx = sprite.getContext('2d');
       spriteCtx.scale(scale, scale);
       spriteCtx.filter = theme === 'dark' ? 'grayscale(1) invert(1)' : 'grayscale(1)';
-      spriteCtx.shadowColor = 'rgba(0,0,0,.3)';
-      spriteCtx.shadowBlur = 4.5;
-      spriteCtx.shadowOffsetY = 2.5;
       spriteCtx.drawImage(image, (targetWidth + 3 - drawWidth) / 2, (targetHeight + 3 - drawHeight) / 2, drawWidth, drawHeight);
       sprites[theme] = sprite;
     }
@@ -92,7 +92,8 @@ export function createSimulation(canvas) {
     width = rect.width;
     height = rect.height;
     // Text is drawn separately at high resolution; the moving scene can use a lighter canvas on phones.
-    dpr = Math.min(window.devicePixelRatio || 1, width < 700 ? 1 : 2);
+    // A small mobile resolution bump sharpens ant edges without paying for full device DPR.
+    dpr = Math.min(window.devicePixelRatio || 1, width < 700 ? 1.25 : 2);
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -112,6 +113,7 @@ export function createSimulation(canvas) {
         ant.target = null;
       }
     }
+    render();
   }
 
   function occupied(x, y) {
@@ -192,12 +194,18 @@ export function createSimulation(canvas) {
   }
 
   function enterFromOutside(ant) {
-    const side = (Math.random() * 4) | 0;
-    if (side === 0) { ant.x = rand(width * .25, width * .75); ant.y = -18; }
-    else if (side === 1) { ant.x = width + 18; ant.y = rand(height * .25, height * .75); }
-    else if (side === 2) { ant.x = rand(width * .25, width * .75); ant.y = height + 18; }
-    else { ant.x = -18; ant.y = rand(height * .25, height * .75); }
+    const [minY, maxY] = antTravelBand();
+    const fromRight = Math.random() < .5;
+    ant.x = fromRight ? width + 18 : -18;
+    ant.y = rand(minY, maxY);
     ant.angle = Math.atan2(height / 2 - ant.y, width / 2 - ant.x);
+  }
+
+  // Keep entrances and exits below the top controls and above the bottom dock.
+  function antTravelBand() {
+    const top = Math.min(width < 700 ? 138 : 120, height * .28);
+    const bottomInset = Math.min(width < 700 ? 150 : 142, height * .25);
+    return [top, Math.max(top + 40, height - bottomInset)];
   }
 
   function spawnAnt() {
@@ -519,7 +527,8 @@ export function createSimulation(canvas) {
       if (y > 0) addBoundary(index - mask.w);
       if (y + 1 < mask.h) addBoundary(index + mask.w);
     }
-    if (Math.random() < .35 && crumbs.length < 140) {
+    const crumbLimit = width < 700 ? 56 : 140;
+    if (Math.random() < .35 && crumbs.length < crumbLimit) {
       crumbs.push({ x: ant.target.x, y: ant.target.y, vx: rand(-15, 15), vy: rand(-23, -7), life: rand(.35, .8), size: rand(1.2, 2.5) });
     }
 
@@ -529,7 +538,9 @@ export function createSimulation(canvas) {
   }
 
   function exitPoint(ant) {
-    const options = [{ x: -25, y: ant.y }, { x: width + 25, y: ant.y }, { x: ant.x, y: -25 }, { x: ant.x, y: height + 25 }];
+    const [minY, maxY] = antTravelBand();
+    const y = clamp(ant.y, minY, maxY);
+    const options = [{ x: -25, y }, { x: width + 25, y }];
     return options.sort((a, b) => Math.hypot(a.x - ant.x, a.y - ant.y) - Math.hypot(b.x - ant.x, b.y - ant.y))[0];
   }
 
@@ -613,7 +624,7 @@ export function createSimulation(canvas) {
     if (paused || !body) return;
     age += dt;
     updateAnts(dt);
-    const trailDuration = Number(document.getElementById('trails').value);
+    const trailDuration = Number(trailsControl.value);
     if (trailDuration <= 0) trails = [];
     else {
       trailClock += dt;
@@ -642,7 +653,6 @@ export function createSimulation(canvas) {
     ctx.save();
     ctx.strokeStyle = darkMode ? '#f0f0f0' : '#181818'; ctx.fillStyle = ctx.strokeStyle;
     ctx.lineWidth = .95; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.shadowColor = 'rgba(0,0,0,.2)'; ctx.shadowBlur = 1; ctx.shadowOffsetY = .35;
     for (let leg = 0; leg < 6; leg++) {
       const pair = Math.floor(leg / 2), side = leg % 2 === 0 ? -1 : 1;
       const rate = ant.legRates?.[leg] ?? (1 + leg * .037);
@@ -678,7 +688,6 @@ export function createSimulation(canvas) {
     ctx.save(); ctx.translate(ant.x + Math.cos(ant.angle) * bob, ant.y + Math.sin(ant.angle) * bob);
     ctx.rotate(ant.angle + Math.PI / 2 + wobble); ctx.transform(1, gait * .035, -gait * .022, 1, 0, 0);
     ctx.fillStyle = darkMode ? '#f0f0f0' : '#181818'; ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = .9;
-    ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = 1.4; ctx.shadowOffsetY = .55;
     drawDefaultLegs(ant, walking);
     ctx.beginPath(); ctx.ellipse(0, 5, 2.2, 4.5, 0, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.ellipse(0, -2, 2, 2.65, 0, 0, Math.PI * 2); ctx.fill();
@@ -689,7 +698,6 @@ export function createSimulation(canvas) {
   }
 
   function render() {
-    ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = darkMode ? '#252525' : '#e7e7e7'; ctx.fillRect(0, 0, width, height);
     for (const trail of trails) {
       ctx.globalAlpha = clamp(1 - trail.age / trail.life, 0, 1) * .42;
@@ -719,19 +727,19 @@ export function createSimulation(canvas) {
     const dt = Math.min(.05, Math.max(0, (now - lastTime) / 1000));
     lastTime = now;
     if (!paused) {
-      const step = width < 700 ? 1 / 24 : 1 / 60;
+      const step = 1 / 60;
       accumulator += dt;
       while (accumulator >= step) { update(step); accumulator -= step; }
     }
-    const renderEvery = width < 700 ? 1000 / 24 : 1000 / 60;
+    const renderEvery = 1000 / 60;
     if (now - lastRenderTime >= renderEvery) { render(); lastRenderTime = now; }
     raf = requestAnimationFrame(frame);
   }
 
-  function pause() { paused = true; }
-  function resume() { paused = false; lastTime = performance.now(); }
-  function pauseForHidden() { if (!paused) { wasPaused = paused; paused = true; hiddenPause = true; } }
-  function resumeFromHidden() { if (hiddenPause) { paused = wasPaused; hiddenPause = false; lastTime = performance.now(); } }
+  function pause() { paused = true; if (raf) { cancelAnimationFrame(raf); raf = 0; } }
+  function resume() { paused = false; lastTime = performance.now(); if (!raf && body) raf = requestAnimationFrame(frame); }
+  function pauseForHidden() { if (!paused) { wasPaused = paused; paused = true; hiddenPause = true; if (raf) { cancelAnimationFrame(raf); raf = 0; } } }
+  function resumeFromHidden() { if (hiddenPause) { paused = wasPaused; hiddenPause = false; lastTime = performance.now(); if (!paused && !raf && body) raf = requestAnimationFrame(frame); } }
   function exportPng() {
     if (!body) throw new Error('There is no scene to export yet.');
     const wasPaused = paused, wasDpr = dpr, wasWidth = canvas.width, wasHeight = canvas.height;

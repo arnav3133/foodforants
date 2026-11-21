@@ -2,11 +2,10 @@ import { createSimulation } from './simulation.js';
 
 const $ = id => document.getElementById(id);
 const ui = {
-  canvas:$('scene'), editor:$('copy'), font:$('font'), color:$('text-color'), size:$('size'), autofit:$('autofit'),
+  canvas:$('scene'), editor:$('copy'), fontOptions:$('font-options'), color:$('text-color'), size:$('size'), autofit:$('autofit'),
   imageLayer:$('image-layer'), imageFile:$('image-file'), editSize:$('edit-size'), trails:$('trails'),
   editToolbar:$('edit-toolbar'), editHint:$('edit-hint'), hint:$('hint'), state:$('state-label'), remaining:$('remaining'),
   typeStyle:$('type-style'), imageTools:$('image-tools'), modeText:$('mode-text'), modeImage:$('mode-image'),
-  additionActions:$('addition-actions'), confirmAdd:$('confirm-add'), cancelAdd:$('cancel-add'),
   playPause:$('play-pause'), replay:$('replay'), edit:$('edit'), preset:$('preset'),
   antSpeed:$('ant-speed'), antChaos:$('ant-chaos'), frequency:$('eating-frequency'), resistance:$('resistance'), deform:$('deform'), dialog:$('tweaks'), theme:$('theme-toggle')
 };
@@ -14,6 +13,7 @@ const sim = createSimulation(ui.canvas);
 let editMode = true, committing = false;
 let contentMode = 'text';
 let images = [], selectedImageId = null, imageSequence = 0, cycleText = '';
+let fontValue = 'dm-sans';
 const fonts = {
   'dm-sans':'"DM Sans", sans-serif',
   'space-grotesk':'"Space Grotesk", sans-serif',
@@ -23,10 +23,32 @@ const fonts = {
   'dm-mono':'"DM Mono", monospace',
   'plex-mono':'"IBM Plex Mono", monospace'
 };
+const stylePopovers = [...document.querySelectorAll('.style-popover')];
+function closeStylePopovers(except = null) {
+  for (const popover of stylePopovers) if (popover !== except) popover.open = false;
+}
+for (const popover of stylePopovers) {
+  popover.addEventListener('toggle', () => {
+    if (popover.open) {
+      closeStylePopovers(popover);
+      $('tweaks').close();
+      $('about').close();
+    }
+  });
+}
+document.addEventListener('click', event => {
+  if (!event.target.closest('.style-popover')) closeStylePopovers();
+});
+for (const [value, label] of [['dm-sans','DM Sans'],['space-grotesk','Space Grotesk'],['manrope','Manrope'],['playfair','Playfair Display'],['fraunces','Fraunces'],['dm-mono','DM Mono'],['plex-mono','IBM Plex Mono']]) {
+  const option = document.createElement('button');
+  option.type = 'button'; option.className = 'font-option'; option.setAttribute('role','option'); option.dataset.font = value; option.textContent = label;
+  option.addEventListener('click', () => { fontValue = value; document.querySelectorAll('.font-option').forEach(node=>node.setAttribute('aria-selected',String(node===option))); preview(); document.querySelector('.style-popover[name="toolbar-popover"][open]')?.removeAttribute('open'); });
+  ui.fontOptions.append(option);
+}
 
 function graphemes(text) { return [...new Intl.Segmenter(undefined, { granularity:'grapheme' }).segment(text)].length; }
 function config() {
-  return { text:ui.editor.value, font:fonts[ui.font.value], textColor:ui.color.value,
+  return { text:ui.editor.value, font:fonts[fontValue], textColor:ui.color.value,
     size:Number(ui.size.value), auto:ui.autofit.checked, weight:600, style:'normal', tracking:-.055, preset:ui.preset.value,
     images:images.filter(item=>!item.pending).map(({image,x,y,w,h})=>({image,x,y,w,h})) };
 }
@@ -44,9 +66,7 @@ function preview() {
   ui.editHint.hidden = !editMode || contentMode !== 'text';
   ui.typeStyle.hidden = !editMode || contentMode !== 'text';
   ui.imageTools.hidden = contentMode !== 'image';
-  const additionActive = !editMode && pending;
-  ui.additionActions.hidden = !additionActive;
-  ui.cancelAdd.hidden = !additionActive;
+  document.querySelector('.toolbar-top').classList.toggle('image-mode', contentMode === 'image');
   ui.modeText.classList.toggle('active', contentMode === 'text');
   ui.modeImage.classList.toggle('active', contentMode === 'image');
   ui.modeText.setAttribute('aria-pressed', String(contentMode === 'text'));
@@ -155,29 +175,17 @@ ui.editor.addEventListener('keydown', event => {
     if (editMode) startFeeding();
   }
 });
-ui.font.addEventListener('change', preview);
 ui.size.addEventListener('input', preview);
 ui.editSize.addEventListener('input', () => { ui.size.value = ui.editSize.value; preview(); });
 ui.autofit.addEventListener('change', preview);
-ui.color.addEventListener('input', preview);
 document.querySelector('.stage-wrap').addEventListener('dblclick', () => { if (!editMode) setEditing(); });
 
-ui.cancelAdd.addEventListener('click', () => {
-  for (let index = images.length - 1; index >= 0; index--) {
-    const item = images[index];
-    if (!item.pending) continue;
-    URL.revokeObjectURL(item.url);
-    images.splice(index, 1);
-  }
-  selectedImageId = null;
-  contentMode = 'image';
-  preview();
-  status('Addition cancelled. The running scene continues.');
-});
-
-ui.confirmAdd.addEventListener('click', () => {
-  if (images.some(item => item.pending)) commitPendingImages();
-});
+document.querySelectorAll('.color-swatch').forEach(swatch => swatch.addEventListener('click', () => {
+  ui.color.value = swatch.dataset.color; preview();
+  document.querySelectorAll('.color-swatch').forEach(node=>node.setAttribute('aria-pressed',String(node===swatch)));
+  document.querySelector('.style-popover[name="toolbar-popover"][open]')?.removeAttribute('open');
+}));
+ui.color.addEventListener('input', () => { if (/^#[0-9a-f]{6}$/i.test(ui.color.value)) preview(); });
 
 ui.canvas.addEventListener('click', () => {
   if (editMode || committing) return;
@@ -195,11 +203,19 @@ ui.playPause.addEventListener('click', async () => {
 ui.replay.addEventListener('click', () => { ui.editor.value = cycleText; editMode = true; startFeeding(); });
 ui.edit.addEventListener('click', setEditing);
 
- $('tweak-open').addEventListener('click', () => { if (!ui.dialog.open) ui.dialog.showModal(); });
+$('tweak-open').addEventListener('click', () => {
+  closeStylePopovers();
+  $('about').close();
+  if (!ui.dialog.open) ui.dialog.showModal();
+});
 $('tweak-close').addEventListener('click', () => ui.dialog.close());
 ui.dialog.addEventListener('click', event => { if (event.target === ui.dialog) ui.dialog.close(); });
 const aboutDialog = $('about');
-$('info-open').addEventListener('click', () => { if (!aboutDialog.open) aboutDialog.showModal(); });
+$('info-open').addEventListener('click', () => {
+  closeStylePopovers();
+  ui.dialog.close();
+  if (!aboutDialog.open) aboutDialog.showModal();
+});
 $('about-close').addEventListener('click', () => aboutDialog.close());
 aboutDialog.addEventListener('click', event => { if (event.target === aboutDialog) aboutDialog.close(); });
 ui.theme.addEventListener('change', () => {
@@ -281,6 +297,15 @@ function renderImageLayers() {
     wrapper.setAttribute('role','group'); wrapper.setAttribute('aria-label',`${item.name}; drag to move, use corner handles to resize`);
     const image = document.createElement('img'); image.src = item.url; image.alt = item.name; image.draggable = false;
     wrapper.append(image);
+    if (item.pending) {
+      const actions = document.createElement('div'); actions.className = 'image-confirm-actions';
+      const confirm = document.createElement('button'); confirm.type = 'button'; confirm.className = 'image-confirm'; confirm.title = 'Add this image'; confirm.setAttribute('aria-label','Add this image'); confirm.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">check</span>';
+      const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'image-cancel'; cancel.title = 'Cancel this image'; cancel.setAttribute('aria-label','Cancel this image'); cancel.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">close</span>';
+      confirm.addEventListener('pointerdown', event=>event.stopPropagation()); cancel.addEventListener('pointerdown', event=>event.stopPropagation());
+      confirm.addEventListener('click', event=>{event.stopPropagation();commitPendingImage(item);});
+      cancel.addEventListener('click', event=>{event.stopPropagation();cancelPendingImage(item);});
+      actions.append(confirm,cancel); wrapper.append(actions);
+    }
     for (const corner of ['nw','ne','sw','se']) {
       const handle = document.createElement('span');
       handle.className = `resize-handle ${corner}`; handle.dataset.corner = corner;
@@ -396,6 +421,22 @@ function commitPendingImages() {
     renderImageLayers();
     status('Image added to the live simulation. Existing decay is preserved.');
   } catch (error) { status(error.message || 'Could not add the image to the simulation.', true); }
+}
+function commitPendingImage(item) {
+  if (!item?.pending || editMode) return;
+  try {
+    sim.addImages([{image:item.image,x:item.x,y:item.y,w:item.w,h:item.h}]);
+    item.pending = false;
+    selectedImageId = null;
+    preview();
+    status('Image added to the live simulation.');
+  } catch (error) { status(error.message || 'Could not add the image to the simulation.', true); }
+}
+function cancelPendingImage(item) {
+  const index = images.indexOf(item);
+  if (index < 0 || !item.pending) return;
+  URL.revokeObjectURL(item.url); images.splice(index,1);
+  selectedImageId = null; preview(); status('Image cancelled. The simulation continues.');
 }
 stage.addEventListener('dragover', event => { if ([...(event.dataTransfer?.items||[])].some(item=>item.kind==='file')) {event.preventDefault();stage.classList.add('is-dragging');} });
 stage.addEventListener('dragleave', event => { if (!stage.contains(event.relatedTarget)) stage.classList.remove('is-dragging'); });
