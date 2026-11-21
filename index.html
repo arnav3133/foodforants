@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#efefef">
+  <title>Natural Decay — typography in motion</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app" id="app">
+    <div class="stage-wrap" aria-label="Typography scene">
+      <canvas id="scene" aria-label="Ants consuming the centered scene"></canvas>
+      <textarea id="copy" class="type-editor" rows="2" spellcheck="false" aria-label="Your text" aria-describedby="edit-hint">slowly, then all at once</textarea>
+      <div id="image-layer" class="image-layer" aria-label="Image collage" tabindex="-1" hidden></div>
+      <input id="image-file" type="file" accept="image/png,image/jpeg,image/svg+xml" multiple hidden>
+      <div class="brand-pill"><strong>NATURAL DECAY</strong><span>TYPE STUDY / 01</span><button id="info-open" class="info-button icon-button" aria-label="About Natural Decay" title="About Natural Decay"><span class="info-glyph" aria-hidden="true">i</span></button></div>
+      <label class="theme-toggle" title="Switch between light and dark mode"><span class="material-symbols-outlined" aria-hidden="true">light_mode</span><input id="theme-toggle" type="checkbox" role="switch" aria-label="Dark mode"><span class="material-symbols-outlined" aria-hidden="true">dark_mode</span></label>
+      <button id="export" class="tweak-trigger frame-export" title="Download this frame"><span class="material-symbols-outlined" aria-hidden="true">download</span><span>Download frame</span></button>
+      <button id="tweak-open" class="tweak-trigger" aria-haspopup="dialog" aria-controls="tweaks"><span class="material-symbols-outlined" aria-hidden="true">tune</span><span>Tweak</span></button>
+      <div id="mode-switch" class="mode-switch" role="group" aria-label="Composition mode">
+        <button id="mode-text" class="mode-option active" type="button" aria-pressed="true">Text</button>
+        <button id="mode-image" class="mode-option" type="button" aria-pressed="false">Images</button>
+      </div>
+      <div class="scene-meta"><span id="state-label" aria-live="polite">READY TO FEED</span><span id="remaining"></span></div>
+      <div id="hint" class="hint" role="status">Type in the center. Press Enter to begin.</div>
+      <div id="edit-hint" class="edit-hint">Enter to feed <i>·</i> Shift + Enter for a new line <i>·</i> Add, drag, or paste images to build a collage</div>
+      <div id="edit-toolbar" class="edit-toolbar" aria-label="Text appearance">
+        <details id="type-style" class="type-style">
+          <summary><span class="material-symbols-outlined" aria-hidden="true">tune</span><span>Text style</span></summary>
+          <div class="type-controls">
+            <label class="tool-select" title="Choose a typeface for your next feeding cycle."><span class="material-symbols-outlined" aria-hidden="true">text_fields</span><select id="font" aria-label="Typeface"><option value="dm-sans">DM Sans</option><option value="space-grotesk">Space Grotesk</option><option value="manrope">Manrope</option><option value="playfair">Playfair Display</option><option value="fraunces">Fraunces</option><option value="dm-mono">DM Mono</option><option value="plex-mono">IBM Plex Mono</option></select></label>
+            <label class="size-tool" title="Set the text size"><span>Size</span><input id="edit-size" type="range" min="28" max="160" value="88" aria-label="Text size"></label>
+            <label class="color-tool" title="Choose a text color"><span>Text color</span><input id="text-color" type="color" value="#5b5b5b" aria-label="Text color"></label>
+          </div>
+        </details>
+        <div id="image-tools" class="image-tools" hidden>
+          <button id="add-image" class="panel-action compact-action" title="Choose one or more PNG, JPEG, or SVG images"><span class="material-symbols-outlined" aria-hidden="true">image</span><span>Add images</span></button>
+          <button id="paste-image" class="panel-action compact-action" title="Paste images from the clipboard"><span class="material-symbols-outlined" aria-hidden="true">content_paste</span><span>Paste</span></button>
+          <button id="clear-image" class="panel-action compact-action" title="Remove the selected image" hidden><span class="material-symbols-outlined" aria-hidden="true">close</span><span>Remove</span></button>
+          <span class="image-mode-hint">Live additions: click outside an image to commit.</span>
+        </div>
+      </div>
+      <div class="transport" role="group" aria-label="Simulation controls">
+        <button id="play-pause" class="icon-button primary-icon" aria-label="Start feeding" title="Start feeding"><span class="material-symbols-outlined" aria-hidden="true">play_arrow</span></button>
+        <button id="replay" class="icon-button" aria-label="Replay" title="Replay" disabled><span class="material-symbols-outlined" aria-hidden="true">replay</span></button>
+        <button id="edit" class="icon-button" aria-label="Edit text" title="Edit text" disabled><span class="material-symbols-outlined" aria-hidden="true">edit</span></button>
+      </div>
+    </div>
+
+    <dialog id="tweaks" class="tweaks" aria-labelledby="tweaks-title">
+      <div class="dialog-head"><div><p class="eyebrow">LIVE BEHAVIOUR</p><h2 id="tweaks-title">Tweak the colony</h2></div><button id="tweak-close" class="close icon-button" aria-label="Close settings" title="Close settings"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+      <div class="tweak-content">
+        <div class="field"><label for="ant-file">Custom ant</label><p>Use your own PNG or SVG ant. It stays on this device for this session.</p><input id="ant-file" type="file" accept="image/png,image/svg+xml"><button id="reset-ant" class="panel-action"><span class="material-symbols-outlined" aria-hidden="true">restart_alt</span>Use default ant</button></div>
+        <div class="field"><label for="ant-speed">Ant speed <small id="ant-speed-value">1.0×</small></label><p>How quickly ants walk between the colony edge and food.</p><input id="ant-speed" type="range" min="0.4" max="2.5" step="0.1" value="1"></div>
+        <div class="field"><label for="eating-frequency">Eating frequency <small id="eating-frequency-value">1.0×</small></label><p>How often ants take a bite while feeding, up to 8× faster.</p><input id="eating-frequency" type="range" min="0.25" max="8" step="0.05" value="1"></div>
+        <div class="field"><label for="ant-chaos">Ant chaos <small id="ant-chaos-value">70%</small></label><p>Adds wandering turns while ants keep food in focus; higher values create broader turns.</p><input id="ant-chaos" type="range" min="0" max="100" step="1" value="70"></div>
+        <div class="field"><label for="preset">Material response</label><p>Sets bite size and the roughness left at feeding edges.</p><select id="preset"><option value="soft">Soft</option><option value="crumbly">Crumbly</option><option value="firm">Firm</option><option value="custom">Custom</option></select></div>
+        <div class="field"><label for="size">Type size <small id="size-value">88 px</small></label><p>Sets the requested text size for your next cycle.</p><input id="size" type="range" min="28" max="160" value="88"></div>
+        <div class="field"><label class="check-label" for="autofit"><input id="autofit" type="checkbox" checked><span>Auto fit</span></label><p>Scales the text down when needed to fit the scene.</p></div>
+        <div class="field"><label for="resistance">Resistance <small id="resistance-value">35%</small></label><p>Higher resistance makes each bite take longer.</p><input id="resistance" type="range" min="0" max="100" value="35"></div>
+        <div class="field"><label for="deform">Deformation <small id="deform-value">2.0%</small></label><p>Controls the text’s subtle movement as it weakens.</p><input id="deform" type="range" min="0" max="5" step="0.1" value="2"></div>
+        <div class="panel-actions"><button id="copy-text" class="panel-action"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span>Copy original text</button></div>
+        <p class="privacy-note">The interface stays grayscale; text and source images keep their chosen colors. Fonts load from Google Fonts.</p>
+      </div>
+    </dialog>
+    <dialog id="about" class="about-dialog" aria-labelledby="about-title">
+      <div class="dialog-head"><div><p class="eyebrow">A LITTLE ABOUT THIS TOOL</p><h2 id="about-title">Natural Decay</h2></div><button id="about-close" class="close icon-button" aria-label="Close about panel" title="Close"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+      <div class="about-content"><p>Turn text or an image collage into a scene ants gradually eat away. Style your type, add and arrange PNG, JPEG, or SVG images, choose a custom ant, tune the colony and its trails, then pause, replay, switch themes, or download a frame.</p><a class="credit-link" href="https://arnavsharnav.framer.website/" target="_blank" rel="noopener noreferrer">made by arnavsharnav <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span></a></div>
+    </dialog>
+    <label class="trail-control" title="Show fading ant footsteps"><span>Ant trails <small id="trail-value">Off</small></span><input id="trails" type="range" min="0" max="10" step="0.5" value="0" aria-label="Ant trail duration in seconds"><small>How long footsteps linger (up to 10 seconds)</small></label>
+  </main>
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
