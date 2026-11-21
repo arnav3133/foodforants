@@ -11,6 +11,7 @@ export function createSimulation(canvas) {
   let state = 'editing', age = 0, body = null, mask = null;
   let ants = [], crumbs = [], trails = [], boundary = [], boundaryFlags = null, textLayers = [];
   let total = 0, remaining = 0, source = '', cycleConfig = null, bites = 0;
+  let biteTokens = 0;
   let onUpdate = () => {};
   let trailClock = 0, customAntUrl = null, antSprites = null, lastBoundaryCompact = 0;
   let darkMode = false;
@@ -65,6 +66,20 @@ export function createSimulation(canvas) {
   }
 
   function emit() { onUpdate({ state, remaining, total }); }
+
+  function targetBitesPerSecond() {
+    const maxAnts=48;
+    const colony=clamp((Number(antCountControl.value)-2)/(maxAnts-2),0,1);
+    const walking=clamp((Number(antSpeedControl.value)-.4)/(5-.4),0,1);
+    const eating=clamp((Number(eatingFrequencyControl.value)-.25)/(10-.25),0,1);
+    const decay=clamp((Number(decaySpeedControl.value)-1)/9,0,1);
+    const activity=colony*.24+walking*.12+eating*.36+decay*.28;
+    const targetSeconds=150-120*activity;
+    const preset=material[cycleConfig?.preset]||material.soft;
+    const radius=preset.radius*Math.sqrt(Number(decaySpeedControl.value)||1);
+    const expectedPixels=Math.PI*radius*radius*.68;
+    return Math.max(1,total/Math.max(1,expectedPixels*targetSeconds));
+  }
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -351,6 +366,7 @@ export function createSimulation(canvas) {
 
     mask = { canvas: maskCanvas, ctx: maskCtx, w: maskW, h: maskH, data: cells, initial: cells.slice(), x: 0, y: 0 };
     remaining = total;
+    biteTokens = targetBitesPerSecond() * .35;
     body = config.images?.length
       ? { w:width,h:height,x:0,y:0,scene:true }
       : { w: maskW, h: maskH, x: (width - maskW) / 2, y: (height - maskH) / 2 };
@@ -367,7 +383,7 @@ export function createSimulation(canvas) {
   function cancel() {
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
     ants = []; crumbs = []; trails = []; boundary = []; boundaryFlags = null; textLayers = [];
-    body = null; mask = null; total = 0; remaining = 0; paused = false; state = 'editing';
+    body = null; mask = null; total = 0; remaining = 0; biteTokens = 0; paused = false; state = 'editing';
     render();
     emit();
   }
@@ -456,6 +472,8 @@ export function createSimulation(canvas) {
       }
     }
     if (!points.length) return;
+    if (biteTokens < 1) return;
+    biteTokens -= 1;
 
     let removed = 0;
     for (const index of points) {
@@ -511,7 +529,8 @@ export function createSimulation(canvas) {
       crumbs.push({ x: ant.target.x, y: ant.target.y, vx: rand(-15, 15), vy: rand(-23, -7), life: rand(.35, .8), size: rand(1.2, 2.5) });
     }
 
-    const next = ant.feed >= preset.carryAt || ant.patchBites >= 3 ? null : targetNear(ant.target.x, ant.target.y, 4);
+    const carryAmount=preset.carryAt*(Number(decaySpeedControl.value)||1);
+    const next = ant.feed >= carryAmount || ant.patchBites >= 10 ? null : targetNear(ant.target.x, ant.target.y, 4);
     if (next) { ant.target = next; ant.state = 'feeding'; }
     else { ant.target = null; ant.state = ant.load ? 'carrying' : 'seeking'; ant.exit = ant.load ? exitPoint(ant) : null; }
   }
@@ -563,7 +582,7 @@ export function createSimulation(canvas) {
 
   function updateAnts(dt) {
     const bitesBefore = bites;
-    const antLimit = Math.max(2, Math.round(Number(antCountControl.value) || 12));
+    const antLimit = Math.max(2, Math.round(Number(antCountControl.value) || 24));
     if (state === 'feeding' && ants.length > antLimit) {
       let excess = ants.length - antLimit;
       for (let index = ants.length - 1; index >= 0 && excess > 0; index--) {
@@ -597,10 +616,10 @@ export function createSimulation(canvas) {
           ant.x += (ant.target.x - ant.x) * Math.min(1, dt * 7);
           ant.y += (ant.target.y - ant.y) * Math.min(1, dt * 7);
           // Eating frequency changes bites per second independently of walking speed.
-          ant.biteClock += dt * 14 * frequency * (1 - resistance * .82) * preset.rate;
+          ant.biteClock = Math.min(4,ant.biteClock + dt * 14 * frequency * (1 - resistance * .82) * preset.rate);
           const biteLimit = width < 700 ? 2 : 6;
           let biteCount = 0;
-          while (ant.biteClock >= 1 && ant.state === 'feeding' && biteCount++ < biteLimit) { ant.biteClock -= 1; bite(ant); }
+          while (ant.biteClock >= 1 && biteTokens >= 1 && ant.state === 'feeding' && biteCount++ < biteLimit) { ant.biteClock -= 1; bite(ant); }
         }
       } else if (ant.state === 'carrying' || ant.state === 'exiting') {
         ant.exit ||= exitPoint(ant);
@@ -619,6 +638,7 @@ export function createSimulation(canvas) {
   function update(dt) {
     if (paused || !body) return;
     age += dt;
+    biteTokens=Math.min(biteTokens+targetBitesPerSecond()*dt,Math.max(1,targetBitesPerSecond()*.5));
     updateAnts(dt);
     const trailDuration = Number(trailsControl.value);
     if (trailDuration <= 0) trails = [];

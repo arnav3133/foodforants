@@ -3,9 +3,9 @@ import { createSimulation } from './simulation.js';
 const $ = id => document.getElementById(id);
 const ui = {
   canvas:$('scene'), editor:$('copy'), fontOptions:$('font-options'), color:$('text-color'), size:$('size'), autofit:$('autofit'),
-  imageLayer:$('image-layer'), imageFile:$('image-file'), editSize:$('edit-size'), trails:$('trails'),
+  imageLayer:$('image-layer'), drawingLayer:$('drawing-layer'), imageFile:$('image-file'), editSize:$('edit-size'), trails:$('trails'),
   editToolbar:$('edit-toolbar'), editHint:$('edit-hint'), hint:$('hint'), state:$('state-label'), remaining:$('remaining'),
-  typeStyle:$('type-style'), imageTools:$('image-tools'), modeText:$('mode-text'), modeImage:$('mode-image'),
+  typeStyle:$('type-style'), imageTools:$('image-tools'), drawSettings:$('draw-settings'), modeText:$('mode-text'), modeImage:$('mode-image'), modeDraw:$('mode-draw'),
   playPause:$('play-pause'), replay:$('replay'), edit:$('edit'), preset:$('preset'),
   antSpeed:$('ant-speed'), antCount:$('ant-count'), decaySpeed:$('decay-speed'), antChaos:$('ant-chaos'), frequency:$('eating-frequency'), resistance:$('resistance'), deform:$('deform'), dialog:$('tweaks'), theme:$('theme-toggle')
 };
@@ -13,6 +13,8 @@ const sim = createSimulation(ui.canvas);
 let editMode = true, committing = false;
 let contentMode = 'text';
 let images = [], selectedImageId = null, imageSequence = 0, cycleText = '';
+let drawingStrokes = [], activeStroke = null, drawColor = '#5b5b5b';
+const drawContext = ui.drawingLayer.getContext('2d');
 let fontValue = 'dm-sans';
 const fonts = {
   'dm-sans':'"DM Sans", sans-serif',
@@ -48,14 +50,57 @@ for (const [value, label] of [['dm-sans','DM Sans'],['space-grotesk','Space Grot
 
 function graphemes(text) { return [...new Intl.Segmenter(undefined, { granularity:'grapheme' }).segment(text)].length; }
 function config() {
+  const compositionImages = images.filter(item=>!item.pending).map(({image,x,y,w,h})=>({image,x,y,w,h}));
+  if (drawingStrokes.length) {
+    renderDrawing();
+    compositionImages.push({image:ui.drawingLayer,x:0,y:0,w:1,h:1});
+  }
   return { text:ui.editor.value, font:fonts[fontValue], textColor:ui.color.value,
     size:Number(ui.size.value), auto:ui.autofit.checked, weight:600, style:'normal', tracking:-.055, preset:ui.preset.value,
-    images:images.filter(item=>!item.pending).map(({image,x,y,w,h})=>({image,x,y,w,h})) };
+    images:compositionImages };
 }
 function status(message, error = false) {
   ui.hint.textContent = message;
   ui.hint.classList.toggle('error', error);
 }
+function renderDrawing() {
+  const rect=ui.drawingLayer.getBoundingClientRect();
+  if(!rect.width||!rect.height||!drawContext)return;
+  drawContext.clearRect(0,0,rect.width,rect.height); drawContext.lineCap='round'; drawContext.lineJoin='round';
+  for(const stroke of drawingStrokes){
+    if(stroke.points.length===1){drawContext.globalCompositeOperation='source-over';drawContext.globalAlpha=.84;drawContext.fillStyle=stroke.color;drawContext.beginPath();drawContext.arc(stroke.points[0].x*rect.width,stroke.points[0].y*rect.height,stroke.size/2,0,Math.PI*2);drawContext.fill();continue;}
+    if(stroke.points.length<2)continue;
+    drawContext.globalCompositeOperation='source-over'; drawContext.globalAlpha=.84; drawContext.strokeStyle=stroke.color; drawContext.lineWidth=stroke.size;
+    drawContext.beginPath(); drawContext.moveTo(stroke.points[0].x*rect.width,stroke.points[0].y*rect.height);
+    for(let i=1;i<stroke.points.length;i++)drawContext.lineTo(stroke.points[i].x*rect.width,stroke.points[i].y*rect.height);
+    drawContext.stroke(); drawContext.globalCompositeOperation='destination-out'; drawContext.globalAlpha=.45;
+    for(const grain of stroke.grain){drawContext.beginPath();drawContext.arc(grain.x*rect.width,grain.y*rect.height,grain.radius,0,Math.PI*2);drawContext.fill();}
+  }
+  drawContext.globalCompositeOperation='source-over';drawContext.globalAlpha=1;
+}
+function resizeDrawingLayer() {
+  const rect=ui.canvas.getBoundingClientRect(),ratio=Math.min(window.devicePixelRatio||1,2);
+  if(!rect.width||!rect.height)return;
+  const width=Math.round(rect.width*ratio),height=Math.round(rect.height*ratio);
+  if(ui.drawingLayer.width!==width||ui.drawingLayer.height!==height){ui.drawingLayer.width=width;ui.drawingLayer.height=height;drawContext.setTransform(ratio,0,0,ratio,0,0);renderDrawing();}
+}
+function pushStrokePoint(stroke,x,y,rect) {
+  const previous=stroke.points.at(-1),px=x/rect.width,py=y/rect.height;
+  if(previous&&Math.hypot((px-previous.x)*rect.width,(py-previous.y)*rect.height)<1.2)return;
+  stroke.points.push({x:px,y:py});if(!previous)return;
+  const distance=Math.hypot((px-previous.x)*rect.width,(py-previous.y)*rect.height);
+  const count=Math.max(1,Math.ceil(distance/Math.max(3,stroke.size*.42)));
+  for(let i=1;i<=count;i++){const t=i/count,gx=previous.x+(px-previous.x)*t,gy=previous.y+(py-previous.y)*t;if(Math.random()<.8)stroke.grain.push({x:gx+(Math.random()-.5)*stroke.size*.72/rect.width,y:gy+(Math.random()-.5)*stroke.size*.72/rect.height,radius:.35+Math.random()*.75});}
+}
+ui.drawingLayer.addEventListener('pointerdown',event=>{
+  if(!editMode||contentMode!=='draw'||event.button!==0)return;
+  event.preventDefault();ui.drawingLayer.setPointerCapture(event.pointerId);const rect=ui.drawingLayer.getBoundingClientRect();
+  activeStroke={color:drawColor,size:Number($('draw-size').value),points:[],grain:[]};drawingStrokes.push(activeStroke);
+  pushStrokePoint(activeStroke,event.clientX-rect.left,event.clientY-rect.top,rect);renderDrawing();preview();
+});
+ui.drawingLayer.addEventListener('pointermove',event=>{if(!activeStroke)return;const rect=ui.drawingLayer.getBoundingClientRect();pushStrokePoint(activeStroke,event.clientX-rect.left,event.clientY-rect.top,rect);renderDrawing();});
+function finishStroke(){if(activeStroke){activeStroke=null;status('Drawing added. Keep sketching or press Play to feed it to the ants.');}}
+ui.drawingLayer.addEventListener('pointerup',finishStroke);ui.drawingLayer.addEventListener('pointercancel',finishStroke);
 function preview() {
   const current = config();
   const pending = images.some(item=>item.pending);
@@ -63,17 +108,26 @@ function preview() {
   ui.editor.hidden = !showText;
   ui.editor.classList.toggle('is-hidden', !showText);
   ui.editor.readOnly = contentMode !== 'text';
-  ui.editor.classList.toggle('composition-preview', contentMode === 'image' && showText);
+  ui.editor.classList.toggle('composition-preview', contentMode !== 'text' && showText);
   ui.editToolbar.hidden = false;
-  ui.editHint.hidden = !editMode || contentMode !== 'text';
+  ui.editHint.hidden = !editMode || contentMode === 'image';
   ui.typeStyle.hidden = !editMode || contentMode !== 'text';
   ui.imageTools.hidden = contentMode !== 'image';
+  ui.drawSettings.hidden = contentMode !== 'draw' || !editMode;
+  ui.drawingLayer.hidden = !editMode || (!drawingStrokes.length && contentMode !== 'draw');
+  if (!ui.drawingLayer.hidden) renderDrawing();
+  ui.modeDraw.disabled = !editMode;
+  document.querySelector('.stage-wrap').classList.toggle('is-drawing',editMode && contentMode==='draw');
   document.querySelector('.toolbar-top').classList.toggle('image-mode', contentMode === 'image');
+  document.querySelector('.toolbar-top').classList.toggle('draw-mode', contentMode === 'draw');
   ui.modeText.classList.toggle('active', contentMode === 'text');
   ui.modeImage.classList.toggle('active', contentMode === 'image');
+  ui.modeDraw.classList.toggle('active', contentMode === 'draw');
   ui.modeText.setAttribute('aria-pressed', String(contentMode === 'text'));
   ui.modeImage.setAttribute('aria-pressed', String(contentMode === 'image'));
+  ui.modeDraw.setAttribute('aria-pressed', String(contentMode === 'draw'));
   ui.imageLayer.hidden = !(editMode && images.length) && !pending;
+  if (contentMode === 'draw') ui.editHint.textContent = 'Draw on the scene. Open brush settings to change size or color.';
   $('clear-image').hidden = !selectedImageId;
   renderImageLayers();
   ui.editor.style.fontFamily = current.font;
@@ -95,6 +149,7 @@ function preview() {
   ui.editSize.value = String(current.size);
   ui.editHint.textContent = contentMode === 'text'
     ? 'Enter to feed · Shift + Enter for a new line'
+    : contentMode === 'draw' ? 'Draw on the scene. Open brush settings to change size or color.'
     : 'Add, drag, resize, or paste images. Click outside to commit.';
 }
 function setMode(mode) {
@@ -104,12 +159,14 @@ function setMode(mode) {
   }
   contentMode = mode;
   preview();
+  if (mode === 'draw') { status('Sketch on the scene. Use Play when the composition is ready.'); return; }
   status(!editMode
     ? (mode === 'image' ? 'Add images, then confirm with ✓ or cancel with ×.' : 'The original text is fixed for this run. Choose Images to add more material.')
     : (mode === 'image' ? 'Text stays on top. Add images, then press Enter or Play to start.' : (images.length ? 'Text stays on top of your collage. Press Enter to start.' : 'Type in the center. Press Enter to feed.')));
 }
 ui.modeText.addEventListener('click', () => setMode('text'));
 ui.modeImage.addEventListener('click', () => setMode('image'));
+ui.modeDraw.addEventListener('click', () => setMode('draw'));
 function updatePlayButton() {
   const icon = ui.playPause.querySelector('.material-symbols-outlined');
   const active = !editMode && !sim.paused;
@@ -133,8 +190,8 @@ function setEditing() {
   ui.remaining.textContent = '';
   preview();
   updatePlayButton();
-  status(contentMode === 'image' ? 'Arrange the collage, then press Enter to feed.' : 'Type, choose a font, size, and color, then press Enter to feed.');
-  if (contentMode === 'image' && images.length) ui.imageLayer.focus?.(); else ui.editor.focus();
+  status(contentMode === 'image' ? 'Arrange the collage, then press Enter to feed.' : contentMode === 'draw' ? 'Continue sketching or press Play to start.' : 'Type, choose a font, size, and color, then press Enter to feed.');
+  if (contentMode === 'image' && images.length) ui.imageLayer.focus?.(); else if (contentMode === 'text') ui.editor.focus();
 }
 async function startFeeding() {
   if (committing || !editMode) return;
@@ -182,12 +239,25 @@ ui.editSize.addEventListener('input', () => { ui.size.value = ui.editSize.value;
 ui.autofit.addEventListener('change', preview);
 document.querySelector('.stage-wrap').addEventListener('dblclick', () => { if (!editMode) setEditing(); });
 
-document.querySelectorAll('.color-swatch').forEach(swatch => swatch.addEventListener('click', () => {
+document.querySelectorAll('#type-style .color-swatch').forEach(swatch => swatch.addEventListener('click', () => {
   ui.color.value = swatch.dataset.color; preview();
-  document.querySelectorAll('.color-swatch').forEach(node=>node.setAttribute('aria-pressed',String(node===swatch)));
+  document.querySelectorAll('#type-style .color-swatch').forEach(node=>node.setAttribute('aria-pressed',String(node===swatch)));
   document.querySelector('.style-popover[name="toolbar-popover"][open]')?.removeAttribute('open');
 }));
 ui.color.addEventListener('input', () => { if (/^#[0-9a-f]{6}$/i.test(ui.color.value)) preview(); });
+document.querySelectorAll('.draw-color-swatch').forEach(swatch=>swatch.addEventListener('click',()=>{
+  drawColor=swatch.dataset.color;$('draw-color').value=drawColor;
+  document.querySelectorAll('.draw-color-swatch').forEach(node=>node.setAttribute('aria-pressed',String(node===swatch)));
+}));
+$('draw-color').addEventListener('input',()=>{
+  const value=$('draw-color').value;
+  if(/^#[0-9a-f]{6}$/i.test(value)){
+    drawColor=value;
+    document.querySelectorAll('.draw-color-swatch').forEach(node=>node.setAttribute('aria-pressed',String(node.dataset.color.toLowerCase()===value.toLowerCase())));
+  }
+});
+$('draw-size').addEventListener('input',()=>{$('draw-size-value').textContent=`${$('draw-size').value} px`;});
+$('clear-drawing').addEventListener('click',()=>{drawingStrokes=[];activeStroke=null;renderDrawing();preview();status('Drawing cleared.');});
 
 ui.canvas.addEventListener('click', () => {
   if (editMode || committing) return;
@@ -261,6 +331,7 @@ function exportEditingFrame() {
   const context = output.getContext('2d'); context.scale(scale, scale);
   context.drawImage(ui.canvas, 0, 0, width, height);
   for (const item of images) context.drawImage(item.image, item.x * width, item.y * height, item.w * width, item.h * height);
+  if (drawingStrokes.length) context.drawImage(ui.drawingLayer,0,0,width,height);
   if (ui.editor.value.trim()) {
     const style = getComputedStyle(ui.editor), rect = ui.editor.getBoundingClientRect();
     const fontSize = parseFloat(style.fontSize), lineHeight = parseFloat(style.lineHeight) || fontSize * 1.04;
@@ -472,11 +543,10 @@ sim.onUpdate(({ state, remaining, total }) => {
   if (!editMode && state) ui.state.textContent = state === 'feeding' ? 'ANTS ARE FEEDING' : state.toUpperCase();
 });
 function syncAntCountLimit() {
-  const max = ui.canvas.clientWidth < 700 ? 12 : 24;
-  ui.antCount.max = String(max);
-  if (Number(ui.antCount.value) > max) ui.antCount.value = String(max);
+  ui.antCount.max = '48';
   updateLabels();
 }
-new ResizeObserver(() => { sim.resize(); syncAntCountLimit(); preview(); }).observe(ui.canvas.parentElement);
+new ResizeObserver(() => { sim.resize(); resizeDrawingLayer(); syncAntCountLimit(); preview(); }).observe(ui.canvas.parentElement);
 document.addEventListener('visibilitychange', () => document.hidden ? sim.pauseForHidden() : sim.resumeFromHidden());
+resizeDrawingLayer();
 updateLabels(); preview(); updatePlayButton();
