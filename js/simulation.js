@@ -8,7 +8,7 @@ export function createSimulation(canvas) {
   let width = 1, height = 1, dpr = 1;
   let raf = 0, lastTime = 0, lastRenderTime = 0, accumulator = 0;
   let paused = false, hiddenPause = false, wasPaused = false;
-  let state = 'editing', age = 0, body = null, mask = null, silhouetteCanvas = null, silhouetteCtx = null;
+  let state = 'editing', age = 0, body = null, mask = null, silhouetteCanvas = null, silhouetteCtx = null, silhouetteScale = 1;
   let ants = [], crumbs = [], trails = [], boundary = [], boundaryFlags = null, textLayers = [];
   let total = 0, remaining = 0, source = '', cycleConfig = null, bites = 0;
   let biteTokens = 0;
@@ -43,15 +43,16 @@ export function createSimulation(canvas) {
   };
 
   function makeSilhouette(sourceCanvas) {
-    const canvas=makeCanvas(sourceCanvas.width,sourceCanvas.height),context=canvas.getContext('2d');
-    context.drawImage(sourceCanvas,0,0);context.globalCompositeOperation='source-in';context.fillStyle='#777';context.fillRect(0,0,canvas.width,canvas.height);context.globalCompositeOperation='source-over';
+    silhouetteScale=Math.min(1,900/Math.max(sourceCanvas.width,sourceCanvas.height));
+    const canvas=makeCanvas(Math.max(1,Math.ceil(sourceCanvas.width*silhouetteScale)),Math.max(1,Math.ceil(sourceCanvas.height*silhouetteScale))),context=canvas.getContext('2d');
+    context.drawImage(sourceCanvas,0,0,canvas.width,canvas.height);context.globalCompositeOperation='source-in';context.fillStyle='#777';context.fillRect(0,0,canvas.width,canvas.height);context.globalCompositeOperation='source-over';
     silhouetteCanvas=canvas;silhouetteCtx=context;
   }
   function addSilhouette(image,x,y,w,h) {
     if(!silhouetteCanvas||!image)return;
-    const layer=makeCanvas(Math.max(1,Math.ceil(w)),Math.max(1,Math.ceil(h))),layerCtx=layer.getContext('2d');
+    const layer=makeCanvas(Math.max(1,Math.ceil(w*silhouetteScale)),Math.max(1,Math.ceil(h*silhouetteScale))),layerCtx=layer.getContext('2d');
     layerCtx.drawImage(image,0,0,layer.width,layer.height);layerCtx.globalCompositeOperation='source-in';layerCtx.fillStyle='#777';layerCtx.fillRect(0,0,layer.width,layer.height);
-    silhouetteCtx.drawImage(layer,x,y,w,h);
+    silhouetteCtx.drawImage(layer,x*silhouetteScale,y*silhouetteScale,w*silhouetteScale,h*silhouetteScale);
   }
 
   // Ant artwork is normalized once at upload time; drawAnt only blits a tiny cached sprite.
@@ -308,7 +309,8 @@ export function createSimulation(canvas) {
       for (const item of config.images) {
         const itemW=Math.max(1,Math.ceil(item.w*maskW)),itemH=Math.max(1,Math.ceil(item.h*maskH));
         const layerCanvas=makeCanvas(itemW,itemH),layerCtx=layerCanvas.getContext('2d',{willReadFrequently:true});
-        layerCtx.drawImage(item.image,0,0,itemW,itemH);
+        if(item.hue)layerCtx.filter=`hue-rotate(${item.hue}deg)`;
+        layerCtx.drawImage(item.image,0,0,itemW,itemH);layerCtx.filter='none';
         maskCtx.drawImage(layerCanvas,item.x*maskW,item.y*maskH,item.w*maskW,item.h*maskH);
         if(item.kind==='live-text'){
           const x=item.x*maskW,y=item.y*maskH,w=item.w*maskW,h=item.h*maskH;
@@ -415,8 +417,8 @@ export function createSimulation(canvas) {
       const expanded = makeCanvas(Math.ceil(width), Math.ceil(height));
       const expandedCtx = expanded.getContext('2d', { willReadFrequently:true });
       expandedCtx.drawImage(mask.canvas, body.x, body.y, body.w, body.h);
-      const expandedSilhouette=makeCanvas(Math.ceil(width),Math.ceil(height)),expandedSilhouetteCtx=expandedSilhouette.getContext('2d');
-      expandedSilhouetteCtx.drawImage(silhouetteCanvas,body.x,body.y,body.w,body.h);silhouetteCanvas=expandedSilhouette;silhouetteCtx=expandedSilhouetteCtx;
+      const expandedSilhouette=makeCanvas(Math.ceil(width*silhouetteScale),Math.ceil(height*silhouetteScale)),expandedSilhouetteCtx=expandedSilhouette.getContext('2d');
+      expandedSilhouetteCtx.drawImage(silhouetteCanvas,body.x*silhouetteScale,body.y*silhouetteScale,body.w*silhouetteScale,body.h*silhouetteScale);silhouetteCanvas=expandedSilhouette;silhouetteCtx=expandedSilhouetteCtx;
       const rgba = expandedCtx.getImageData(0, 0, expanded.width, expanded.height).data;
       const cells = new Uint8Array(expanded.width * expanded.height);
       let count = 0;
@@ -434,7 +436,8 @@ export function createSimulation(canvas) {
       const x = item.x * mask.w, y = item.y * mask.h, w = item.w * mask.w, h = item.h * mask.h;
       const iw = Math.max(1, Math.ceil(w)), ih = Math.max(1, Math.ceil(h));
       const layer = makeCanvas(iw, ih), layerCtx = layer.getContext('2d', { willReadFrequently:true });
-      layerCtx.drawImage(item.image, 0, 0, iw, ih);
+      if(item.hue)layerCtx.filter=`hue-rotate(${item.hue}deg)`;
+      layerCtx.drawImage(item.image, 0, 0, iw, ih);layerCtx.filter='none';
       mask.ctx.drawImage(layer, x, y, w, h);
       addSilhouette(layer,x,y,w,h);
       if (item.kind === 'live-text') {

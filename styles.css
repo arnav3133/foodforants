@@ -314,10 +314,9 @@ html[data-theme="dark"] .toolbar-top .toolbar-actions::before{background:#505050
 html[data-theme="dark"] .style-popover .size-tool{background:#292929f5!important;border-color:#505050!important;color:#eee}
 html[data-theme="dark"] .style-popover .size-tool input{accent-color:#ddd}
 @media(max-width:600px){
-  /* Align all floating controls to the first style button and cap them to the viewport. */
-  .type-style>.style-popover:nth-child(1) .font-panel{left:0!important;transform:none!important}
-  .type-style>.style-popover:nth-child(2) .size-tool{left:-40px!important;transform:none!important}
-  .type-style>.style-popover:nth-child(3) .color-panel{left:-80px!important;transform:none!important}
+  /* The type tools now sit at the right edge; anchor their popovers inward to the screen. */
+  .type-style>.style-popover .font-panel,.type-style>.style-popover .color-panel{left:auto!important;right:0!important;transform:none!important}
+  .type-style>.style-popover .size-tool{left:auto!important;right:0!important;transform:none!important}
   .style-popover .font-panel,.style-popover .color-panel{width:min(220px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 140px);overflow:auto}
   .style-popover .font-options{max-height:max(72px,min(36vh,230px,calc(100dvh - 190px)))}
   .style-popover .size-tool{width:min(230px,calc(100vw - 24px))!important;max-width:calc(100vw - 24px)!important}
@@ -360,6 +359,32 @@ html[data-theme="dark"] .brush-size input{accent-color:#ddd}
 .text-drag-handle{position:absolute;left:50%;top:-28px;transform:translateX(-50%);display:flex;align-items:center;gap:3px;padding:3px 8px;border:1px solid #ddd;border-radius:99px;background:#f8f8f8;color:#555;font-size:9px;white-space:nowrap;cursor:grab;touch-action:none}
 .text-drag-handle:active{cursor:grabbing}
 html[data-theme="dark"] .text-drag-handle{border-color:#555;background:#292929;color:#eee}
+#export{right:max(70px,calc(env(safe-area-inset-right) + 70px))}
+.scene-meta{left:max(18px,env(safe-area-inset-left));right:auto;bottom:max(18px,env(safe-area-inset-bottom));width:max-content;max-width:min(90vw,680px);justify-content:flex-start;gap:0;padding:8px 12px;border:1px solid #fff9;border-radius:99px;background:#f8f8f8d9;backdrop-filter:blur(14px);font-size:9px;letter-spacing:.1em}
+.scene-meta #remaining{display:none}
+.transport #edit{display:none}
+.image-hue-panel[hidden]{display:none!important}
+.hue-panel{position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);z-index:20;width:210px;padding:12px;border:1px solid #fff9;border-radius:16px;background:#f8f8f8f5;box-shadow:0 10px 28px #0002;backdrop-filter:blur(16px);color:#555}
+.hue-chip-row{display:flex;align-items:center;gap:8px;margin:8px 0 3px;font-size:10px;color:#777}
+.hue-chip{width:21px;height:21px;border:1px solid #aaa;border-radius:50%;background:linear-gradient(135deg,#555 0 50%,#ddd 50%)}
+#image-hue{width:100%;height:17px;margin:8px 0;appearance:none;border-radius:99px;background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);cursor:pointer}
+#image-hue::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border:2px solid #fff;border-radius:50%;background:#333;box-shadow:0 1px 5px #0004}
+#image-hue::-moz-range-thumb{width:13px;height:13px;border:2px solid #fff;border-radius:50%;background:#333;box-shadow:0 1px 5px #0004}
+.hue-reset{width:100%;justify-content:center;margin-top:4px}
+html[data-theme="dark"] .hue-panel{border-color:#505050;background:#292929f5;color:#eee}
+html[data-theme="dark"] .hue-chip-row{color:#bbb}
+.restore-ui{display:none;position:absolute;z-index:12;left:50%;bottom:max(10px,env(safe-area-inset-bottom));transform:translateX(-50%);width:42px;height:42px;border:1px solid #fff9;background:#f8f8f8e8;box-shadow:0 6px 22px #0002;backdrop-filter:blur(14px)}
+.app.ui-minimized .brand-pill,.app.ui-minimized .theme-toggle,.app.ui-minimized #export,.app.ui-minimized #tweak-open,.app.ui-minimized .scene-meta,.app.ui-minimized .hint,.app.ui-minimized .edit-hint,.app.ui-minimized #copy,.app.ui-minimized #image-layer,.app.ui-minimized #drawing-layer{display:none!important}
+.app.ui-minimized #edit-toolbar{opacity:0;visibility:hidden;pointer-events:none;transform:translate(-50%,10px);transition:opacity .22s ease,transform .22s cubic-bezier(.2,.75,.25,1),visibility .22s}
+.edit-toolbar{transition:opacity .22s ease,transform .22s cubic-bezier(.2,.75,.25,1),background-color .22s ease,border-color .22s ease,box-shadow .22s ease}
+.restore-ui{transition:opacity .22s ease,transform .22s cubic-bezier(.2,.75,.25,1)}
+.app.ui-minimized #restore-ui{display:grid}
+.app.ui-minimized #minimize-ui{display:none}
+.app.ui-minimized .tweaks[open],.app.ui-minimized .about-dialog[open]{display:none}
+.draw-settings[hidden],.undo-drawing[hidden]{display:none!important}
+.undo-drawing:disabled{opacity:.4;cursor:default}
+.clear-drawing:disabled{opacity:.45;cursor:default}
+.edit-toolbar,.toolbar-top,.toolbar-actions,.transport,.mode-option,.style-popover>summary{transition-timing-function:cubic-bezier(.2,.75,.25,1)}
 @media(max-width:600px){
   .edit-toolbar{width:calc(100vw - 20px);max-width:calc(100vw - 20px);left:50%;right:auto;transform:translateX(-50%)}
   .toolbar-top,.toolbar-top.image-mode,.toolbar-top.draw-mode{justify-content:space-between;gap:5px}
@@ -368,4 +393,8 @@ html[data-theme="dark"] .text-drag-handle{border-color:#555;background:#292929;c
   .toolbar-top .draw-option{min-width:54px!important}
   .toolbar-top .type-style{gap:2px}
   .toolbar-top .type-style .style-popover>summary{width:32px;min-width:32px;height:34px}
+  #export{right:calc(max(13px,env(safe-area-inset-right)) + 52px)}
+  .scene-meta{left:max(12px,env(safe-area-inset-left));right:auto;bottom:max(118px,calc(env(safe-area-inset-bottom) + 112px));max-width:calc(100vw - 24px);font-size:8px;letter-spacing:.06em}
+  .hue-panel{left:auto;right:0;transform:none;width:min(210px,calc(100vw - 24px))}
+  .app.ui-minimized .restore-ui{bottom:max(8px,env(safe-area-inset-bottom))}
 }

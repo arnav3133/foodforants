@@ -5,7 +5,7 @@ const ui = {
   canvas:$('scene'), editor:$('copy'), fontOptions:$('font-options'), color:$('text-color'), size:$('size'), autofit:$('autofit'),
   imageLayer:$('image-layer'), drawingLayer:$('drawing-layer'), imageFile:$('image-file'), editSize:$('edit-size'), trails:$('trails'),
   editToolbar:$('edit-toolbar'), editHint:$('edit-hint'), hint:$('hint'), state:$('state-label'), remaining:$('remaining'),
-  typeStyle:$('type-style'), imageTools:$('image-tools'), drawSettings:$('draw-settings'), addTextLayer:$('add-text-layer'), modeText:$('mode-text'), modeImage:$('mode-image'), modeDraw:$('mode-draw'),
+  typeStyle:$('type-style'), imageTools:$('image-tools'), imageHuePanel:$('image-hue-panel'), drawSettings:$('draw-settings'), addTextLayer:$('add-text-layer'), undoDrawing:$('undo-drawing'), minimizeUI:$('minimize-ui'), restoreUI:$('restore-ui'), modeText:$('mode-text'), modeImage:$('mode-image'), modeDraw:$('mode-draw'),
   playPause:$('play-pause'), replay:$('replay'), edit:$('edit'), preset:$('preset'),
   antSpeed:$('ant-speed'), antCount:$('ant-count'), decaySpeed:$('decay-speed'), antChaos:$('ant-chaos'), frequency:$('eating-frequency'), resistance:$('resistance'), deform:$('deform'), dialog:$('tweaks'), theme:$('theme-toggle')
 };
@@ -13,7 +13,7 @@ const sim = createSimulation(ui.canvas);
 let editMode = true, committing = false;
 let contentMode = 'text';
 let images = [], selectedImageId = null, imageSequence = 0, cycleText = '';
-let drawingStrokes = [], activeStroke = null, drawColor = '#5b5b5b';
+let drawingStrokes = [], activeStroke = null, drawColor = '#5b5b5b', drawingRenderQueued = false;
 const drawContext = ui.drawingLayer.getContext('2d');
 let fontValue = 'dm-sans';
 const fonts = {
@@ -50,7 +50,7 @@ for (const [value, label] of [['dm-sans','DM Sans'],['space-grotesk','Space Grot
 
 function graphemes(text) { return [...new Intl.Segmenter(undefined, { granularity:'grapheme' }).segment(text)].length; }
 function config() {
-  const compositionImages = images.filter(item=>!item.pending).map(item=>({image:item.image,x:item.x,y:item.y,w:item.w,h:item.h,kind:item.isTextLayer?'live-text':'image'}));
+  const compositionImages = images.filter(item=>!item.pending).map(item=>({image:item.image,x:item.x,y:item.y,w:item.w,h:item.h,hue:item.hue||0,kind:item.isTextLayer?'live-text':'image'}));
   if (drawingStrokes.length) {
     renderDrawing();
     compositionImages.push({image:ui.drawingLayer,x:0,y:0,w:1,h:1});
@@ -63,21 +63,36 @@ function status(message, error = false) {
   ui.hint.textContent = message;
   ui.hint.classList.toggle('error', error);
 }
+function hueTarget(){return images.find(item=>item.id===selectedImageId)||[...images].reverse().find(item=>item.pending)||images.at(-1)||null;}
+function syncImageHue(){
+  const item=hueTarget(),hue=Number(item?.hue)||0;
+  $('image-hue').value=String(hue);$('image-hue-value').textContent=hue===0?'Original':`${hue}° hue shift`;
+  $('image-hue-chip').style.background=hue===0?'linear-gradient(135deg,#555 0 50%,#ddd 50%)':`hsl(${hue} 74% 52%)`;
+  $('image-hue').disabled=!item;$('image-hue-reset').disabled=!item||hue===0;
+}
+function applyImageHue(value){
+  const item=hueTarget();if(!item){syncImageHue();status('Add or select an image before changing its hue.',true);return;}
+  item.hue=Number(value)||0;
+  const node=ui.imageLayer.querySelector(`[data-image-id="${item.id}"] img`);if(node)node.style.filter=item.hue?`hue-rotate(${item.hue}deg)`:'none';
+  syncImageHue();
+}
 function renderDrawing() {
   const rect=ui.drawingLayer.getBoundingClientRect();
   if(!rect.width||!rect.height||!drawContext)return;
   drawContext.clearRect(0,0,rect.width,rect.height); drawContext.lineCap='round'; drawContext.lineJoin='round';
   for(const stroke of drawingStrokes){
-    if(stroke.points.length===1){drawContext.globalCompositeOperation='source-over';drawContext.globalAlpha=.84;drawContext.fillStyle=stroke.color;drawContext.beginPath();drawContext.arc(stroke.points[0].x*rect.width,stroke.points[0].y*rect.height,stroke.size/2,0,Math.PI*2);drawContext.fill();continue;}
+    if(stroke.points.length===1){drawContext.globalCompositeOperation='source-over';drawContext.globalAlpha=.72;drawContext.fillStyle=stroke.color;drawContext.beginPath();drawContext.ellipse(stroke.points[0].x*rect.width,stroke.points[0].y*rect.height,stroke.size*.38,stroke.size*.48,stroke.textureAngle||0,0,Math.PI*2);drawContext.fill();continue;}
     if(stroke.points.length<2)continue;
-    drawContext.globalCompositeOperation='source-over'; drawContext.globalAlpha=.84; drawContext.strokeStyle=stroke.color; drawContext.lineWidth=stroke.size;
-    drawContext.beginPath(); drawContext.moveTo(stroke.points[0].x*rect.width,stroke.points[0].y*rect.height);
-    for(let i=1;i<stroke.points.length;i++)drawContext.lineTo(stroke.points[i].x*rect.width,stroke.points[i].y*rect.height);
-    drawContext.stroke(); drawContext.globalCompositeOperation='destination-out'; drawContext.globalAlpha=.45;
-    for(const grain of stroke.grain){drawContext.beginPath();drawContext.arc(grain.x*rect.width,grain.y*rect.height,grain.radius,0,Math.PI*2);drawContext.fill();}
+    const trace=(offsetX=0,offsetY=0)=>{const points=stroke.points;drawContext.beginPath();drawContext.moveTo(points[0].x*rect.width+offsetX,points[0].y*rect.height+offsetY);if(points.length===2){drawContext.lineTo(points[1].x*rect.width+offsetX,points[1].y*rect.height+offsetY);return;}for(let i=1;i<points.length-1;i++){const x=points[i].x*rect.width+offsetX,y=points[i].y*rect.height+offsetY,mx=(x+points[i+1].x*rect.width+offsetX)/2,my=(y+points[i+1].y*rect.height+offsetY)/2;drawContext.quadraticCurveTo(x,y,mx,my);}const last=points.at(-1);drawContext.lineTo(last.x*rect.width+offsetX,last.y*rect.height+offsetY);};
+    drawContext.globalCompositeOperation='source-over';drawContext.strokeStyle=stroke.color;drawContext.globalAlpha=.20;drawContext.lineWidth=stroke.size*1.16;trace();drawContext.stroke();
+    drawContext.globalAlpha=.76;drawContext.lineWidth=stroke.size*.82;trace();drawContext.stroke();
+    drawContext.globalAlpha=.34;drawContext.lineWidth=Math.max(.7,stroke.size*.2);trace(stroke.dryX,stroke.dryY);drawContext.stroke();
+    drawContext.globalCompositeOperation='destination-out';drawContext.globalAlpha=.45;
+    for(const grain of stroke.grain){drawContext.beginPath();drawContext.ellipse(grain.x*rect.width,grain.y*rect.height,grain.radius,grain.radius*.65,grain.angle||0,0,Math.PI*2);drawContext.fill();}
   }
   drawContext.globalCompositeOperation='source-over';drawContext.globalAlpha=1;
 }
+function scheduleDrawingRender(){if(drawingRenderQueued)return;drawingRenderQueued=true;requestAnimationFrame(()=>{drawingRenderQueued=false;renderDrawing();});}
 function resizeDrawingLayer() {
   const rect=ui.canvas.getBoundingClientRect(),ratio=Math.min(window.devicePixelRatio||1,2);
   if(!rect.width||!rect.height)return;
@@ -90,15 +105,15 @@ function pushStrokePoint(stroke,x,y,rect) {
   stroke.points.push({x:px,y:py});if(!previous)return;
   const distance=Math.hypot((px-previous.x)*rect.width,(py-previous.y)*rect.height);
   const count=Math.max(1,Math.ceil(distance/Math.max(3,stroke.size*.42)));
-  for(let i=1;i<=count;i++){const t=i/count,gx=previous.x+(px-previous.x)*t,gy=previous.y+(py-previous.y)*t;if(Math.random()<.8)stroke.grain.push({x:gx+(Math.random()-.5)*stroke.size*.72/rect.width,y:gy+(Math.random()-.5)*stroke.size*.72/rect.height,radius:.35+Math.random()*.75});}
+  for(let i=1;i<=count;i++){const t=i/count,gx=previous.x+(px-previous.x)*t,gy=previous.y+(py-previous.y)*t;if(Math.random()<.9)stroke.grain.push({x:gx+(Math.random()-.5)*stroke.size*.86/rect.width,y:gy+(Math.random()-.5)*stroke.size*.86/rect.height,radius:.35+Math.random()*1.15,angle:Math.random()*Math.PI});}
 }
 ui.drawingLayer.addEventListener('pointerdown',event=>{
   if(contentMode!=='draw'||event.button!==0)return;
   event.preventDefault();ui.drawingLayer.setPointerCapture(event.pointerId);const rect=ui.drawingLayer.getBoundingClientRect();
-  activeStroke={color:drawColor,size:Number($('draw-size').value),points:[],grain:[]};drawingStrokes.push(activeStroke);
+  activeStroke={color:drawColor,size:Number($('draw-size').value),points:[],grain:[],textureAngle:Math.random()*Math.PI,dryX:(Math.random()-.5)*Number($('draw-size').value)*.16,dryY:(Math.random()-.5)*Number($('draw-size').value)*.16};drawingStrokes.push(activeStroke);
   pushStrokePoint(activeStroke,event.clientX-rect.left,event.clientY-rect.top,rect);renderDrawing();preview();
 });
-ui.drawingLayer.addEventListener('pointermove',event=>{if(!activeStroke)return;const rect=ui.drawingLayer.getBoundingClientRect();pushStrokePoint(activeStroke,event.clientX-rect.left,event.clientY-rect.top,rect);renderDrawing();});
+ui.drawingLayer.addEventListener('pointermove',event=>{if(!activeStroke)return;const rect=ui.drawingLayer.getBoundingClientRect();pushStrokePoint(activeStroke,event.clientX-rect.left,event.clientY-rect.top,rect);scheduleDrawingRender();});
 function finishStroke(){
   if(!activeStroke)return;
   const completedStroke=activeStroke;
@@ -120,9 +135,14 @@ function preview() {
   ui.editor.classList.toggle('composition-preview', contentMode !== 'text' && showText);
   ui.editToolbar.hidden = false;
   ui.editHint.hidden = !editMode || contentMode === 'image';
-  ui.typeStyle.hidden = !editMode || contentMode !== 'text';
+  ui.typeStyle.hidden = contentMode !== 'text';
   ui.imageTools.hidden = contentMode !== 'image';
+  ui.imageHuePanel.hidden = contentMode !== 'image';
   ui.drawSettings.hidden = contentMode !== 'draw';
+  ui.undoDrawing.hidden = contentMode !== 'draw';
+  ui.undoDrawing.disabled = !editMode || !drawingStrokes.length;
+  $('clear-drawing').disabled = !editMode;
+  syncImageHue();
   ui.addTextLayer.hidden = editMode || contentMode !== 'text';
   ui.addTextLayer.disabled = sim.consumed < .5;
   ui.addTextLayer.title = sim.consumed < .5 ? 'Unlocks after half the current material has been eaten' : 'Add another text layer';
@@ -139,6 +159,8 @@ function preview() {
   ui.modeImage.setAttribute('aria-pressed', String(contentMode === 'image'));
   ui.modeDraw.setAttribute('aria-pressed', String(contentMode === 'draw'));
   ui.imageLayer.hidden = !(editMode && images.length) && !pending;
+  const pendingText=images.find(item=>item.isTextLayer&&item.pending);
+  if(pendingText){pendingText.font=fonts[fontValue];pendingText.size=Number(ui.size.value)||pendingText.size;pendingText.color=ui.color.value||pendingText.color;}
   if (contentMode === 'draw') ui.editHint.textContent = 'Draw on the scene. Open brush settings to change size or color.';
   $('clear-image').hidden = !selectedImageId;
   renderImageLayers();
@@ -234,7 +256,7 @@ async function startFeeding() {
     ui.playPause.disabled = false;
     ui.replay.disabled = false;
     ui.edit.disabled = false;
-    ui.state.textContent = 'ANTS ARE FEEDING';
+    ui.state.textContent = `ANTS ARE FEEDING · ${Math.round((1-sim.consumed)*100)}% MATERIAL LEFT`;
     preview();
     updatePlayButton();
     status('Double-click to edit.');
@@ -279,6 +301,9 @@ $('draw-color').addEventListener('input',()=>{
 });
 $('draw-size').addEventListener('input',()=>{$('draw-size-value').textContent=`${$('draw-size').value} px`;});
 $('clear-drawing').addEventListener('click',()=>{drawingStrokes=[];activeStroke=null;renderDrawing();preview();status('Drawing cleared.');});
+$('undo-drawing').addEventListener('click',()=>{if(!editMode||!drawingStrokes.length)return;drawingStrokes.pop();renderDrawing();preview();status('Last chalk stroke undone.');});
+$('image-hue').addEventListener('input',event=>applyImageHue(event.target.value));
+$('image-hue-reset').addEventListener('click',()=>applyImageHue(0));
 
 function copyDrawingCanvas(){const canvas=document.createElement('canvas');canvas.width=ui.drawingLayer.width;canvas.height=ui.drawingLayer.height;canvas.getContext('2d').drawImage(ui.drawingLayer,0,0);return canvas;}
 function cropLiveStroke(stroke){
@@ -307,6 +332,10 @@ ui.playPause.addEventListener('click', async () => {
 });
 ui.replay.addEventListener('click', () => { ui.editor.value = cycleText; editMode = true; startFeeding(); });
 ui.edit.addEventListener('click', setEditing);
+const appShell=$('app');
+ui.minimizeUI.addEventListener('click',()=>{closeStylePopovers();$('tweaks').close();$('about').close();appShell.classList.add('ui-minimized');ui.restoreUI.focus();});
+ui.restoreUI.addEventListener('click',()=>{appShell.classList.remove('ui-minimized');ui.minimizeUI.focus();});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&appShell.classList.contains('ui-minimized')){appShell.classList.remove('ui-minimized');ui.minimizeUI.focus();}});
 
 $('tweak-open').addEventListener('click', () => {
   closeStylePopovers();
@@ -363,7 +392,7 @@ function exportEditingFrame() {
   const output = document.createElement('canvas'); output.width = width * scale; output.height = height * scale;
   const context = output.getContext('2d'); context.scale(scale, scale);
   context.drawImage(ui.canvas, 0, 0, width, height);
-  for (const item of images) context.drawImage(item.image, item.x * width, item.y * height, item.w * width, item.h * height);
+  for (const item of images) { context.save();if(item.hue)context.filter=`hue-rotate(${item.hue}deg)`;context.drawImage(item.image, item.x * width, item.y * height, item.w * width, item.h * height);context.restore(); }
   if (drawingStrokes.length) context.drawImage(ui.drawingLayer,0,0,width,height);
   if (ui.editor.value.trim()) {
     const style = getComputedStyle(ui.editor), rect = ui.editor.getBoundingClientRect();
@@ -410,7 +439,8 @@ function renderImageLayers() {
       wrapper.append(entry);
       const drag=document.createElement('div');drag.className='text-drag-handle';drag.innerHTML='<span class="material-symbols-outlined" aria-hidden="true">drag_indicator</span><span>Move text</span>';wrapper.append(drag);
     }else{
-      const image = document.createElement('img'); image.src = item.url; image.alt = item.name; image.draggable = false;
+    const image = document.createElement('img'); image.src = item.url; image.alt = item.name; image.draggable = false;
+    if(item.hue)image.style.filter=`hue-rotate(${item.hue}deg)`;
       wrapper.append(image);
     }
     if (item.pending) {
@@ -439,6 +469,7 @@ function beginImageTransform(event, item, wrapper) {
   event.preventDefault();
   selectedImageId = item.id;
   ui.imageLayer.querySelectorAll('.image-item').forEach(node=>node.classList.toggle('selected',node===wrapper));
+  syncImageHue();
   const active = wrapper;
   const handle = event.target.closest('.resize-handle');
   const rect = ui.canvas.getBoundingClientRect();
@@ -481,7 +512,7 @@ function setImage(file, dropPoint = null) {
     const cx = dropPoint ? dropPoint.x : .5 + (index % 3 - 1) * .06;
     const cy = dropPoint ? dropPoint.y : .48 + (index % 3 - 1) * .05;
     const live = !editMode && ['feeding','clearing','finished'].includes(sim.state);
-    const item = { id:`image-${++imageSequence}`, image, url, name:file.name || 'Pasted SVG', pending:live,
+    const item = { id:`image-${++imageSequence}`, image, url, name:file.name || 'Pasted SVG', pending:live,hue:0,
       w,h,x:Math.max(0,Math.min(1-w,cx-w/2)),y:Math.max(0,Math.min(1-h,cy-h/2)) };
     contentMode = 'image';
     images.push(item); selectedImageId = item.id;
@@ -530,7 +561,7 @@ function commitPendingImages() {
   const pending = images.filter(item=>item.pending);
   if (!pending.length || editMode) return;
   try {
-    sim.addImages(pending.map(({image,x,y,w,h})=>({image,x,y,w,h})));
+    sim.addImages(pending.map(({image,x,y,w,h,hue})=>({image,x,y,w,h,hue:hue||0})));
     for (const item of pending) item.pending = false;
     selectedImageId = null;
     $('clear-image').hidden = true;
@@ -546,7 +577,7 @@ function commitPendingImage(item) {
     item.image=rasterizeLiveText(item);item.url=item.image.toDataURL('image/png');
   }
   try {
-    sim.addImages([{image:item.image,x:item.x,y:item.y,w:item.w,h:item.h,kind:item.isTextLayer?'live-text':'image'}]);
+    sim.addImages([{image:item.image,x:item.x,y:item.y,w:item.w,h:item.h,hue:item.hue||0,kind:item.isTextLayer?'live-text':'image'}]);
     item.pending = false;
     selectedImageId = null;
     preview();
@@ -596,11 +627,12 @@ ui.trails.addEventListener('input', () => {
 });
 
 sim.onUpdate(({ state, remaining, total }) => {
-  ui.remaining.textContent = total ? `${Math.round(100 * remaining / total)}% MATERIAL` : '';
+  const percent=total?Math.round(100*remaining/total):0;
+  ui.state.textContent=state&&total?`${state==='feeding'?'ANTS ARE FEEDING':state.toUpperCase()} · ${percent}% MATERIAL LEFT`:state?.toUpperCase()||'READY TO FEED';
+  ui.remaining.textContent='';
   ui.addTextLayer.hidden = editMode || contentMode !== 'text';
   ui.addTextLayer.disabled = sim.consumed < .5;
   ui.addTextLayer.title = sim.consumed < .5 ? 'Unlocks after half the current material has been eaten' : 'Add another text layer';
-  if (!editMode && state) ui.state.textContent = state === 'feeding' ? 'ANTS ARE FEEDING' : state.toUpperCase();
 });
 function syncAntCountLimit() {
   ui.antCount.max = '48';

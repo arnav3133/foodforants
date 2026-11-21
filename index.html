@@ -44,6 +44,10 @@
               <button id="paste-image" class="panel-action compact-action" title="Paste images from the clipboard"><span class="material-symbols-outlined" aria-hidden="true">content_paste</span></button>
               <button id="clear-image" class="panel-action compact-action" title="Remove selected image" hidden><span class="material-symbols-outlined" aria-hidden="true">delete</span></button>
             </div>
+            <details id="image-hue-panel" class="style-popover image-hue-panel" name="toolbar-popover" hidden>
+              <summary aria-label="Image hue" title="Image hue"><span class="material-symbols-outlined" aria-hidden="true">palette</span></summary>
+              <div class="hue-panel"><div class="popover-title">Image hue</div><div class="hue-chip-row"><span id="image-hue-chip" class="hue-chip"></span><small id="image-hue-value">Original</small></div><input id="image-hue" type="range" min="0" max="359" value="0" aria-label="Shift image hue"><button id="image-hue-reset" class="panel-action hue-reset" type="button"><span class="material-symbols-outlined" aria-hidden="true">undo</span>No hue</button></div>
+            </details>
             <details id="draw-settings" class="style-popover draw-settings" name="toolbar-popover" hidden>
               <summary aria-label="Brush settings" title="Brush settings"><span class="material-symbols-outlined" aria-hidden="true">tune</span></summary>
               <div class="draw-panel">
@@ -57,14 +61,17 @@
                 <button id="clear-drawing" class="panel-action clear-drawing"><span class="material-symbols-outlined" aria-hidden="true">delete_sweep</span>Clear drawing</button>
               </div>
             </details>
+            <button id="undo-drawing" class="panel-action compact-action" type="button" title="Undo last chalk stroke" aria-label="Undo last chalk stroke" hidden><span class="material-symbols-outlined" aria-hidden="true">undo</span></button>
           </div>
         </div>
         <div class="transport" role="group" aria-label="Simulation controls">
           <button id="play-pause" class="icon-button primary-icon" aria-label="Start feeding" title="Start feeding"><span class="material-symbols-outlined" aria-hidden="true">play_arrow</span></button>
-          <button id="replay" class="icon-button" aria-label="Replay" title="Replay" disabled><span class="material-symbols-outlined" aria-hidden="true">replay</span></button>
+          <button id="replay" class="icon-button" aria-label="Reset simulation" title="Reset simulation" disabled><span class="material-symbols-outlined" aria-hidden="true">restart_alt</span></button>
           <button id="edit" class="icon-button" aria-label="Edit text" title="Edit text" disabled><span class="material-symbols-outlined" aria-hidden="true">edit</span></button>
+          <button id="minimize-ui" class="icon-button" aria-label="Hide interface" title="Hide interface"><span class="material-symbols-outlined" aria-hidden="true">fullscreen</span></button>
         </div>
       </div>
+      <button id="restore-ui" class="icon-button restore-ui" type="button" aria-label="Show interface" title="Show interface"><span class="material-symbols-outlined" aria-hidden="true">fullscreen_exit</span></button>
     </div>
 
     <dialog id="tweaks" class="tweaks" aria-labelledby="tweaks-title">
