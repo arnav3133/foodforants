@@ -343,3 +343,29 @@ html[data-theme="dark"] .brush-size input{accent-color:#ddd}
   .draw-option{min-width:62px!important}
   .draw-settings .draw-panel{left:auto!important;right:0!important;bottom:calc(100% + 8px)!important;transform:none!important;width:min(250px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 140px);overflow:auto}
 }
+
+/* Fixed two-row dock: mode tabs stay left, mode-specific tools stay right. */
+.edit-toolbar{width:min(460px,calc(100vw - 24px));max-width:calc(100vw - 24px);transition:background-color .24s ease,border-color .24s ease,box-shadow .24s ease}
+.toolbar-top,.toolbar-top.image-mode,.toolbar-top.draw-mode{justify-content:space-between;min-height:42px}
+.toolbar-top #mode-switch{order:0;flex:0 0 auto}
+.toolbar-top .toolbar-actions{order:1;justify-content:flex-end;gap:5px;flex:1 1 auto;min-width:0}
+.toolbar-top .toolbar-actions::before{display:none}
+.toolbar-top .type-style{flex:0 0 auto}
+.toolbar-top .mode-switch,.toolbar-top .type-style,.toolbar-top .image-tools,.toolbar-top .draw-settings{transition:opacity .2s ease,transform .24s cubic-bezier(.2,.75,.25,1)}
+.image-item.is-live-text{overflow:visible;border-radius:12px}
+.live-text-entry{display:block;width:100%;height:100%;min-height:100%;padding:10px;border:0;outline:0;resize:none;overflow:auto;background:#ffffff22;text-align:center;white-space:pre-wrap;line-height:1.08;letter-spacing:-.045em;font-weight:600;touch-action:manipulation;user-select:text}
+.live-text-entry::placeholder{color:#7779;font-size:18px;font-weight:500;letter-spacing:0}
+#add-text-layer[hidden]{display:none!important}
+#add-text-layer:disabled{opacity:.42;cursor:default}
+.text-drag-handle{position:absolute;left:50%;top:-28px;transform:translateX(-50%);display:flex;align-items:center;gap:3px;padding:3px 8px;border:1px solid #ddd;border-radius:99px;background:#f8f8f8;color:#555;font-size:9px;white-space:nowrap;cursor:grab;touch-action:none}
+.text-drag-handle:active{cursor:grabbing}
+html[data-theme="dark"] .text-drag-handle{border-color:#555;background:#292929;color:#eee}
+@media(max-width:600px){
+  .edit-toolbar{width:calc(100vw - 20px);max-width:calc(100vw - 20px);left:50%;right:auto;transform:translateX(-50%)}
+  .toolbar-top,.toolbar-top.image-mode,.toolbar-top.draw-mode{justify-content:space-between;gap:5px}
+  .toolbar-top .toolbar-actions{gap:4px}
+  .toolbar-top .mode-option{min-width:46px;padding:7px 6px}
+  .toolbar-top .draw-option{min-width:54px!important}
+  .toolbar-top .type-style{gap:2px}
+  .toolbar-top .type-style .style-popover>summary{width:32px;min-width:32px;height:34px}
+}

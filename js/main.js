@@ -5,7 +5,7 @@ const ui = {
   canvas:$('scene'), editor:$('copy'), fontOptions:$('font-options'), color:$('text-color'), size:$('size'), autofit:$('autofit'),
   imageLayer:$('image-layer'), drawingLayer:$('drawing-layer'), imageFile:$('image-file'), editSize:$('edit-size'), trails:$('trails'),
   editToolbar:$('edit-toolbar'), editHint:$('edit-hint'), hint:$('hint'), state:$('state-label'), remaining:$('remaining'),
-  typeStyle:$('type-style'), imageTools:$('image-tools'), drawSettings:$('draw-settings'), modeText:$('mode-text'), modeImage:$('mode-image'), modeDraw:$('mode-draw'),
+  typeStyle:$('type-style'), imageTools:$('image-tools'), drawSettings:$('draw-settings'), addTextLayer:$('add-text-layer'), modeText:$('mode-text'), modeImage:$('mode-image'), modeDraw:$('mode-draw'),
   playPause:$('play-pause'), replay:$('replay'), edit:$('edit'), preset:$('preset'),
   antSpeed:$('ant-speed'), antCount:$('ant-count'), decaySpeed:$('decay-speed'), antChaos:$('ant-chaos'), frequency:$('eating-frequency'), resistance:$('resistance'), deform:$('deform'), dialog:$('tweaks'), theme:$('theme-toggle')
 };
@@ -50,7 +50,7 @@ for (const [value, label] of [['dm-sans','DM Sans'],['space-grotesk','Space Grot
 
 function graphemes(text) { return [...new Intl.Segmenter(undefined, { granularity:'grapheme' }).segment(text)].length; }
 function config() {
-  const compositionImages = images.filter(item=>!item.pending).map(({image,x,y,w,h})=>({image,x,y,w,h}));
+  const compositionImages = images.filter(item=>!item.pending).map(item=>({image:item.image,x:item.x,y:item.y,w:item.w,h:item.h,kind:item.isTextLayer?'live-text':'image'}));
   if (drawingStrokes.length) {
     renderDrawing();
     compositionImages.push({image:ui.drawingLayer,x:0,y:0,w:1,h:1});
@@ -93,13 +93,22 @@ function pushStrokePoint(stroke,x,y,rect) {
   for(let i=1;i<=count;i++){const t=i/count,gx=previous.x+(px-previous.x)*t,gy=previous.y+(py-previous.y)*t;if(Math.random()<.8)stroke.grain.push({x:gx+(Math.random()-.5)*stroke.size*.72/rect.width,y:gy+(Math.random()-.5)*stroke.size*.72/rect.height,radius:.35+Math.random()*.75});}
 }
 ui.drawingLayer.addEventListener('pointerdown',event=>{
-  if(!editMode||contentMode!=='draw'||event.button!==0)return;
+  if(contentMode!=='draw'||event.button!==0)return;
   event.preventDefault();ui.drawingLayer.setPointerCapture(event.pointerId);const rect=ui.drawingLayer.getBoundingClientRect();
   activeStroke={color:drawColor,size:Number($('draw-size').value),points:[],grain:[]};drawingStrokes.push(activeStroke);
   pushStrokePoint(activeStroke,event.clientX-rect.left,event.clientY-rect.top,rect);renderDrawing();preview();
 });
 ui.drawingLayer.addEventListener('pointermove',event=>{if(!activeStroke)return;const rect=ui.drawingLayer.getBoundingClientRect();pushStrokePoint(activeStroke,event.clientX-rect.left,event.clientY-rect.top,rect);renderDrawing();});
-function finishStroke(){if(activeStroke){activeStroke=null;status('Drawing added. Keep sketching or press Play to feed it to the ants.');}}
+function finishStroke(){
+  if(!activeStroke)return;
+  const completedStroke=activeStroke;
+  activeStroke=null;
+  if(!editMode){
+    const crop=cropLiveStroke(completedStroke);
+    try{sim.addImages([{image:crop.image,x:crop.x,y:crop.y,w:crop.w,h:crop.h}]);saveLiveDrawing(crop.image,crop.x,crop.y,crop.w,crop.h);drawingStrokes=[];renderDrawing();status('Chalk added to the live simulation.');}
+    catch(error){status(error.message||'Could not add this drawing.',true);}
+  }else status('Drawing added. Keep sketching or press Play to feed it to the ants.');
+}
 ui.drawingLayer.addEventListener('pointerup',finishStroke);ui.drawingLayer.addEventListener('pointercancel',finishStroke);
 function preview() {
   const current = config();
@@ -113,11 +122,14 @@ function preview() {
   ui.editHint.hidden = !editMode || contentMode === 'image';
   ui.typeStyle.hidden = !editMode || contentMode !== 'text';
   ui.imageTools.hidden = contentMode !== 'image';
-  ui.drawSettings.hidden = contentMode !== 'draw' || !editMode;
-  ui.drawingLayer.hidden = !editMode || (!drawingStrokes.length && contentMode !== 'draw');
+  ui.drawSettings.hidden = contentMode !== 'draw';
+  ui.addTextLayer.hidden = editMode || contentMode !== 'text';
+  ui.addTextLayer.disabled = sim.consumed < .5;
+  ui.addTextLayer.title = sim.consumed < .5 ? 'Unlocks after half the current material has been eaten' : 'Add another text layer';
+  ui.drawingLayer.hidden = contentMode !== 'draw' && !editMode;
   if (!ui.drawingLayer.hidden) renderDrawing();
-  ui.modeDraw.disabled = !editMode;
-  document.querySelector('.stage-wrap').classList.toggle('is-drawing',editMode && contentMode==='draw');
+  ui.modeDraw.disabled = false;
+  document.querySelector('.stage-wrap').classList.toggle('is-drawing',contentMode==='draw');
   document.querySelector('.toolbar-top').classList.toggle('image-mode', contentMode === 'image');
   document.querySelector('.toolbar-top').classList.toggle('draw-mode', contentMode === 'draw');
   ui.modeText.classList.toggle('active', contentMode === 'text');
@@ -154,19 +166,27 @@ function preview() {
 }
 function setMode(mode) {
   if (mode === contentMode) {
-    if (!editMode && mode === 'text') status('Text is locked during a run. Use Edit to change it and start a new run.');
+    if (!editMode && mode === 'text') status(sim.consumed>=.5?'A new text layer is available in this mode.':'A new text layer unlocks after half the current material is eaten.');
     return;
   }
   contentMode = mode;
   preview();
-  if (mode === 'draw') { status('Sketch on the scene. Use Play when the composition is ready.'); return; }
+  if (mode === 'draw') { status(editMode?'Sketch on the scene. Use Play when the composition is ready.':'Sketch and release to add chalk to the live scene.'); return; }
   status(!editMode
-    ? (mode === 'image' ? 'Add images, then confirm with ✓ or cancel with ×.' : 'The original text is fixed for this run. Choose Images to add more material.')
+    ? (mode === 'image' ? 'Add images, then confirm with ✓ or cancel with ×.' : sim.consumed>=.5 ? 'Half the material is gone. Add a new text layer, then confirm it.' : 'The original text is fixed for this run. A new text layer unlocks after half the material is eaten.')
     : (mode === 'image' ? 'Text stays on top. Add images, then press Enter or Play to start.' : (images.length ? 'Text stays on top of your collage. Press Enter to start.' : 'Type in the center. Press Enter to feed.')));
 }
 ui.modeText.addEventListener('click', () => setMode('text'));
 ui.modeImage.addEventListener('click', () => setMode('image'));
-ui.modeDraw.addEventListener('click', () => setMode('draw'));
+  ui.modeDraw.addEventListener('click', () => setMode('draw'));
+function createLiveTextLayer(){
+  if(editMode||sim.consumed<.5){status('A new text layer unlocks after half the current material has been eaten.',true);return;}
+  const item={id:`text-${++imageSequence}`,name:'New text',text:'',font:fonts[fontValue],size:Number(ui.size.value)||72,color:ui.color.value||'#5b5b5b',x:.28,y:.4,w:.44,h:.2,pending:true,isTextLayer:true,image:null,url:''};
+  images.push(item);selectedImageId=item.id;contentMode='text';preview();
+  requestAnimationFrame(()=>ui.imageLayer.querySelector(`[data-image-id="${item.id}"] .live-text-entry`)?.focus());
+  status('Type the new text, move or resize it, then confirm it.');
+}
+ui.addTextLayer.addEventListener('click',createLiveTextLayer);
 function updatePlayButton() {
   const icon = ui.playPause.querySelector('.material-symbols-outlined');
   const active = !editMode && !sim.paused;
@@ -205,6 +225,7 @@ async function startFeeding() {
   try {
     await document.fonts.ready;
     await sim.start(current);
+    if(drawingStrokes.length){const saved=copyDrawingCanvas();images.push({id:`drawing-${++imageSequence}`,name:'Chalk drawing',image:saved,url:saved.toDataURL('image/png'),x:0,y:0,w:1,h:1,pending:false});drawingStrokes=[];renderDrawing();}
     editMode = false;
     selectedImageId = null;
     ui.editor.classList.add('is-hidden');
@@ -258,6 +279,18 @@ $('draw-color').addEventListener('input',()=>{
 });
 $('draw-size').addEventListener('input',()=>{$('draw-size-value').textContent=`${$('draw-size').value} px`;});
 $('clear-drawing').addEventListener('click',()=>{drawingStrokes=[];activeStroke=null;renderDrawing();preview();status('Drawing cleared.');});
+
+function copyDrawingCanvas(){const canvas=document.createElement('canvas');canvas.width=ui.drawingLayer.width;canvas.height=ui.drawingLayer.height;canvas.getContext('2d').drawImage(ui.drawingLayer,0,0);return canvas;}
+function cropLiveStroke(stroke){
+  const rect=ui.drawingLayer.getBoundingClientRect(),scale=ui.drawingLayer.width/Math.max(1,rect.width),pad=stroke.size*2.2;
+  const xs=stroke.points.map(point=>point.x*rect.width),ys=stroke.points.map(point=>point.y*rect.height);
+  const left=Math.max(0,Math.floor((Math.min(...xs)-pad)*scale)),top=Math.max(0,Math.floor((Math.min(...ys)-pad)*scale));
+  const right=Math.min(ui.drawingLayer.width,Math.ceil((Math.max(...xs)+pad)*scale)),bottom=Math.min(ui.drawingLayer.height,Math.ceil((Math.max(...ys)+pad)*scale));
+  const image=document.createElement('canvas');image.width=Math.max(1,right-left);image.height=Math.max(1,bottom-top);
+  image.getContext('2d').drawImage(ui.drawingLayer,left,top,image.width,image.height,0,0,image.width,image.height);
+  return{image,x:left/ui.drawingLayer.width,y:top/ui.drawingLayer.height,w:image.width/ui.drawingLayer.width,h:image.height/ui.drawingLayer.height};
+}
+function saveLiveDrawing(canvas,x,y,w,h){images.push({id:`drawing-${++imageSequence}`,name:'Chalk drawing',image:canvas,url:canvas.toDataURL('image/png'),x,y,w,h,pending:false});}
 
 ui.canvas.addEventListener('click', () => {
   if (editMode || committing) return;
@@ -365,17 +398,25 @@ function renderImageLayers() {
   const visible = editMode ? images : images.filter(item=>item.pending);
   for (const item of visible) {
     const wrapper = document.createElement('div');
-    wrapper.className = `image-item${item.id === selectedImageId ? ' selected' : ''}`;
+    wrapper.className = `image-item${item.isTextLayer?' is-live-text':''}${item.id === selectedImageId ? ' selected' : ''}`;
     wrapper.dataset.imageId = item.id;
     wrapper.style.left = `${item.x * 100}%`; wrapper.style.top = `${item.y * 100}%`;
     wrapper.style.width = `${item.w * 100}%`; wrapper.style.height = `${item.h * 100}%`;
     wrapper.setAttribute('role','group'); wrapper.setAttribute('aria-label',`${item.name}; drag to move, use corner handles to resize`);
-    const image = document.createElement('img'); image.src = item.url; image.alt = item.name; image.draggable = false;
-    wrapper.append(image);
+    if(item.isTextLayer && item.pending){
+      const entry=document.createElement('textarea');entry.className='live-text-entry';entry.placeholder='Type new text';entry.value=item.text;
+      entry.setAttribute('aria-label','New text layer');entry.maxLength=500;entry.style.fontFamily=item.font;entry.style.fontSize=`${item.size}px`;entry.style.color=item.color;
+      entry.addEventListener('input',()=>{item.text=entry.value;});
+      wrapper.append(entry);
+      const drag=document.createElement('div');drag.className='text-drag-handle';drag.innerHTML='<span class="material-symbols-outlined" aria-hidden="true">drag_indicator</span><span>Move text</span>';wrapper.append(drag);
+    }else{
+      const image = document.createElement('img'); image.src = item.url; image.alt = item.name; image.draggable = false;
+      wrapper.append(image);
+    }
     if (item.pending) {
       const actions = document.createElement('div'); actions.className = 'image-confirm-actions';
-      const confirm = document.createElement('button'); confirm.type = 'button'; confirm.className = 'image-confirm'; confirm.title = 'Add this image'; confirm.setAttribute('aria-label','Add this image'); confirm.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">check</span>';
-      const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'image-cancel'; cancel.title = 'Cancel this image'; cancel.setAttribute('aria-label','Cancel this image'); cancel.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">close</span>';
+      const confirm = document.createElement('button'); confirm.type = 'button'; confirm.className = 'image-confirm'; confirm.title = item.isTextLayer?'Add this text':'Add this image'; confirm.setAttribute('aria-label',item.isTextLayer?'Add this text':'Add this image'); confirm.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">check</span>';
+      const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'image-cancel'; cancel.title = item.isTextLayer?'Cancel this text':'Cancel this image'; cancel.setAttribute('aria-label',item.isTextLayer?'Cancel this text':'Cancel this image'); cancel.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">close</span>';
       confirm.addEventListener('pointerdown', event=>event.stopPropagation()); cancel.addEventListener('pointerdown', event=>event.stopPropagation());
       confirm.addEventListener('click', event=>{event.stopPropagation();commitPendingImage(item);});
       cancel.addEventListener('click', event=>{event.stopPropagation();cancelPendingImage(item);});
@@ -394,6 +435,7 @@ function renderImageLayers() {
 
 function beginImageTransform(event, item, wrapper) {
   if ((!editMode && !item.pending) || event.button !== 0) return;
+  if(item.isTextLayer&&item.pending&&!event.target.closest('.text-drag-handle,.resize-handle'))return;
   event.preventDefault();
   selectedImageId = item.id;
   ui.imageLayer.querySelectorAll('.image-item').forEach(node=>node.classList.toggle('selected',node===wrapper));
@@ -499,19 +541,34 @@ function commitPendingImages() {
 }
 function commitPendingImage(item) {
   if (!item?.pending || editMode) return;
+  if(item.isTextLayer){
+    if(!item.text.trim()){status('Type something before adding this text layer.',true);ui.imageLayer.querySelector('.live-text-entry')?.focus();return;}
+    item.image=rasterizeLiveText(item);item.url=item.image.toDataURL('image/png');
+  }
   try {
-    sim.addImages([{image:item.image,x:item.x,y:item.y,w:item.w,h:item.h}]);
+    sim.addImages([{image:item.image,x:item.x,y:item.y,w:item.w,h:item.h,kind:item.isTextLayer?'live-text':'image'}]);
     item.pending = false;
     selectedImageId = null;
     preview();
-    status('Image added to the live simulation.');
+    status(item.isTextLayer?'Text layer added to the live simulation.':'Image added to the live simulation.');
   } catch (error) { status(error.message || 'Could not add the image to the simulation.', true); }
+}
+function rasterizeLiveText(item){
+  const rect=ui.canvas.getBoundingClientRect(),scale=Math.min(window.devicePixelRatio||1,2.5);
+  const cssWidth=Math.max(1,rect.width*item.w),cssHeight=Math.max(1,rect.height*item.h),canvas=document.createElement('canvas');
+  canvas.width=Math.ceil(cssWidth*scale);canvas.height=Math.ceil(cssHeight*scale);
+  const ctx=canvas.getContext('2d');ctx.scale(scale,scale);ctx.fillStyle=item.color;ctx.font=`600 ${item.size}px ${item.font}`;ctx.textAlign='center';ctx.textBaseline='middle';
+  const maxWidth=cssWidth*.92,lines=[];
+  for(const para of item.text.split(/\n/)){let line='';for(const word of para.split(/\s+/)){const test=line?`${line} ${word}`:word;if(line&&ctx.measureText(test).width>maxWidth){lines.push(line);line=word;}else line=test;}lines.push(line);}
+  const lineHeight=item.size*1.12,startY=cssHeight/2-(lines.length-1)*lineHeight/2;
+  lines.forEach((line,index)=>ctx.fillText(line,cssWidth/2,startY+index*lineHeight,maxWidth));
+  return canvas;
 }
 function cancelPendingImage(item) {
   const index = images.indexOf(item);
   if (index < 0 || !item.pending) return;
-  URL.revokeObjectURL(item.url); images.splice(index,1);
-  selectedImageId = null; preview(); status('Image cancelled. The simulation continues.');
+  if(item.url)URL.revokeObjectURL(item.url); images.splice(index,1);
+  selectedImageId = null; preview(); status(item.isTextLayer?'Text layer cancelled. The simulation continues.':'Image cancelled. The simulation continues.');
 }
 stage.addEventListener('dragover', event => { if ([...(event.dataTransfer?.items||[])].some(item=>item.kind==='file')) {event.preventDefault();stage.classList.add('is-dragging');} });
 stage.addEventListener('dragleave', event => { if (!stage.contains(event.relatedTarget)) stage.classList.remove('is-dragging'); });
@@ -540,6 +597,9 @@ ui.trails.addEventListener('input', () => {
 
 sim.onUpdate(({ state, remaining, total }) => {
   ui.remaining.textContent = total ? `${Math.round(100 * remaining / total)}% MATERIAL` : '';
+  ui.addTextLayer.hidden = editMode || contentMode !== 'text';
+  ui.addTextLayer.disabled = sim.consumed < .5;
+  ui.addTextLayer.title = sim.consumed < .5 ? 'Unlocks after half the current material has been eaten' : 'Add another text layer';
   if (!editMode && state) ui.state.textContent = state === 'feeding' ? 'ANTS ARE FEEDING' : state.toUpperCase();
 });
 function syncAntCountLimit() {

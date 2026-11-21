@@ -8,7 +8,7 @@ export function createSimulation(canvas) {
   let width = 1, height = 1, dpr = 1;
   let raf = 0, lastTime = 0, lastRenderTime = 0, accumulator = 0;
   let paused = false, hiddenPause = false, wasPaused = false;
-  let state = 'editing', age = 0, body = null, mask = null;
+  let state = 'editing', age = 0, body = null, mask = null, silhouetteCanvas = null, silhouetteCtx = null;
   let ants = [], crumbs = [], trails = [], boundary = [], boundaryFlags = null, textLayers = [];
   let total = 0, remaining = 0, source = '', cycleConfig = null, bites = 0;
   let biteTokens = 0;
@@ -41,6 +41,18 @@ export function createSimulation(canvas) {
     result.height = h;
     return result;
   };
+
+  function makeSilhouette(sourceCanvas) {
+    const canvas=makeCanvas(sourceCanvas.width,sourceCanvas.height),context=canvas.getContext('2d');
+    context.drawImage(sourceCanvas,0,0);context.globalCompositeOperation='source-in';context.fillStyle='#777';context.fillRect(0,0,canvas.width,canvas.height);context.globalCompositeOperation='source-over';
+    silhouetteCanvas=canvas;silhouetteCtx=context;
+  }
+  function addSilhouette(image,x,y,w,h) {
+    if(!silhouetteCanvas||!image)return;
+    const layer=makeCanvas(Math.max(1,Math.ceil(w)),Math.max(1,Math.ceil(h))),layerCtx=layer.getContext('2d');
+    layerCtx.drawImage(image,0,0,layer.width,layer.height);layerCtx.globalCompositeOperation='source-in';layerCtx.fillStyle='#777';layerCtx.fillRect(0,0,layer.width,layer.height);
+    silhouetteCtx.drawImage(layer,x,y,w,h);
+  }
 
   // Ant artwork is normalized once at upload time; drawAnt only blits a tiny cached sprite.
   function makeAntSprites(image) {
@@ -289,6 +301,7 @@ export function createSimulation(canvas) {
     const maxWidth = Math.max(80, width - 90), maxHeight = Math.max(80, height * .58), minSize = 24;
     let size = config.size, lines = [], measure;
     let maskW, maskH, maskCanvas, maskCtx;
+    const importedTextLayers=[];
     if (config.images?.length) {
       maskW=Math.max(1,Math.ceil(width)); maskH=Math.max(1,Math.ceil(height));
       maskCanvas=makeCanvas(maskW,maskH); maskCtx=maskCanvas.getContext('2d',{willReadFrequently:true});
@@ -297,6 +310,10 @@ export function createSimulation(canvas) {
         const layerCanvas=makeCanvas(itemW,itemH),layerCtx=layerCanvas.getContext('2d',{willReadFrequently:true});
         layerCtx.drawImage(item.image,0,0,itemW,itemH);
         maskCtx.drawImage(layerCanvas,item.x*maskW,item.y*maskH,item.w*maskW,item.h*maskH);
+        if(item.kind==='live-text'){
+          const x=item.x*maskW,y=item.y*maskH,w=item.w*maskW,h=item.h*maskH;
+          importedTextLayers.push({canvas:item.image,ctx:item.image.getContext('2d'),x,y,w,h,scale:item.image.width/Math.max(1,w)});
+        }
       }
     }
 
@@ -355,6 +372,9 @@ export function createSimulation(canvas) {
       }
       textLayers.push(vectorLayer);
     }
+    textLayers.push(...importedTextLayers);
+
+    makeSilhouette(maskCanvas);
 
     const rgba = maskCtx.getImageData(0, 0, maskW, maskH).data;
     const cells = new Uint8Array(maskW * maskH);
@@ -383,7 +403,7 @@ export function createSimulation(canvas) {
   function cancel() {
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
     ants = []; crumbs = []; trails = []; boundary = []; boundaryFlags = null; textLayers = [];
-    body = null; mask = null; total = 0; remaining = 0; biteTokens = 0; paused = false; state = 'editing';
+    body = null; mask = null; silhouetteCanvas=null;silhouetteCtx=null;total = 0; remaining = 0; biteTokens = 0; paused = false; state = 'editing';
     render();
     emit();
   }
@@ -395,6 +415,8 @@ export function createSimulation(canvas) {
       const expanded = makeCanvas(Math.ceil(width), Math.ceil(height));
       const expandedCtx = expanded.getContext('2d', { willReadFrequently:true });
       expandedCtx.drawImage(mask.canvas, body.x, body.y, body.w, body.h);
+      const expandedSilhouette=makeCanvas(Math.ceil(width),Math.ceil(height)),expandedSilhouetteCtx=expandedSilhouette.getContext('2d');
+      expandedSilhouetteCtx.drawImage(silhouetteCanvas,body.x,body.y,body.w,body.h);silhouetteCanvas=expandedSilhouette;silhouetteCtx=expandedSilhouetteCtx;
       const rgba = expandedCtx.getImageData(0, 0, expanded.width, expanded.height).data;
       const cells = new Uint8Array(expanded.width * expanded.height);
       let count = 0;
@@ -414,6 +436,7 @@ export function createSimulation(canvas) {
       const layer = makeCanvas(iw, ih), layerCtx = layer.getContext('2d', { willReadFrequently:true });
       layerCtx.drawImage(item.image, 0, 0, iw, ih);
       mask.ctx.drawImage(layer, x, y, w, h);
+      addSilhouette(layer,x,y,w,h);
       if (item.kind === 'live-text') {
         textLayers.push({ canvas:item.image, ctx:item.image.getContext('2d'), x, y, w, h,
           scale:item.image.width / Math.max(1, w) });
@@ -446,9 +469,9 @@ export function createSimulation(canvas) {
         ant.state = 'seeking'; ant.target = null; ant.exit = null; ant.load = 0;
         ant.feed = 0; ant.patchBites = 0; ant.lastFood = null;
       }
-      if (!ants.length) for (let i = 0; i < 12; i++) spawnAnt();
-      emit(); render();
+      if (!ants.length) for (let i = 0; i < Math.max(2,Math.round(Number(antCountControl.value)||12)); i++) spawnAnt();
     }
+    emit(); render();
     return added;
   }
 
@@ -723,6 +746,7 @@ export function createSimulation(canvas) {
     if (body && mask) {
       const deform = Number(deformationControl.value) / 100;
       const sag = Math.sin(age * .14) * deform * Math.min(mask.h * .03, 3);
+      if(silhouetteCanvas){ctx.globalAlpha=.12;ctx.drawImage(silhouetteCanvas,body.x,body.y+sag,body.w,body.h);ctx.globalAlpha=1;}
       ctx.drawImage(mask.canvas, body.x, body.y + sag, body.w, body.h);
       for (const layer of textLayers) {
         const layerX = body.x + layer.x / mask.sx;
@@ -792,6 +816,7 @@ export function createSimulation(canvas) {
     isTextAt(x, y) { return !!mask && occupied(x, y); },
     get paused() { return paused; },
     get state() { return state; },
+    get consumed() { return total ? 1-remaining/total : 0; },
     get originalText() { return source; }
   };
 }
