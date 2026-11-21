@@ -227,6 +227,8 @@ html[data-theme="dark"] .edit-toolbar{background:#292929ed;border-color:#494949}
   .hint{bottom:max(70px,calc(env(safe-area-inset-bottom) + 62px));font-size:9px}.edit-hint{display:none}
 }
 @media(max-width:390px){.edit-toolbar{gap:2px;padding:4px}.type-style{gap:2px}.mode-option{min-width:42px;padding-inline:6px}.edit-toolbar .icon-button,.style-popover>summary,.compact-action{width:32px;min-width:32px;height:32px}}
+
+
 #tweak-open,#export{width:42px;justify-content:center;padding:0}
 #tweak-open>span:last-child,#export>span:last-child{display:none}
 
@@ -397,4 +399,88 @@ html[data-theme="dark"] .hue-chip-row{color:#bbb}
   .scene-meta{left:max(12px,env(safe-area-inset-left));right:auto;bottom:max(118px,calc(env(safe-area-inset-bottom) + 112px));max-width:calc(100vw - 24px);font-size:8px;letter-spacing:.06em}
   .hue-panel{left:auto;right:0;transform:none;width:min(210px,calc(100vw - 24px))}
   .app.ui-minimized .restore-ui{bottom:max(8px,env(safe-area-inset-bottom))}
+}
+
+/* Ordered tool dock: playback, mode, mode tools, then the one-button hide toggle. */
+.edit-toolbar{left:50%;right:auto;bottom:max(16px,env(safe-area-inset-bottom));width:max-content;max-width:calc(100vw - 28px);padding:7px;border:1px solid #fff9;border-radius:20px;background:#f8f8f8e8;backdrop-filter:blur(18px);box-shadow:0 12px 38px #00000010;transform:translateX(-50%)}
+.toolbar-controls{display:flex;align-items:center;gap:7px;min-width:0}
+.toolbar-controls>.transport{position:static;display:flex;align-items:center;gap:3px;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;transform:none}
+.toolbar-controls>.transport .icon-button{width:36px;height:36px;flex:0 0 36px}
+.toolbar-controls>#mode-switch{position:static;left:auto;top:auto;transform:none;flex:0 0 auto;gap:2px;padding:3px;border:1px solid var(--line);background:#eee;border-radius:99px;box-shadow:none;backdrop-filter:none}
+.toolbar-controls .mode-option{min-width:57px;padding:7px 9px;font-size:10px}
+.toolbar-controls .draw-option{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:64px}
+.toolbar-controls .draw-option .material-symbols-outlined{font-size:14px}
+.toolbar-controls>.toolbar-actions{display:flex;align-items:center;justify-content:flex-start;gap:4px;width:auto;min-width:0;flex:0 0 auto;flex-wrap:nowrap}
+.toolbar-controls>.toolbar-actions::before{content:"";display:block;width:1px;height:25px;margin:0 3px;background:#ddd;flex:0 0 1px}
+.toolbar-actions[hidden],.type-style[hidden],.image-tools[hidden],.draw-settings[hidden],.image-hue-panel[hidden],#add-text-layer[hidden],#undo-drawing[hidden]{display:none!important}
+.type-style{display:flex;align-items:center;gap:4px;position:static}
+.style-popover{position:relative;flex:0 0 auto}
+.style-popover>summary{display:flex;align-items:center;justify-content:center;gap:5px;width:auto;min-width:55px;height:36px;padding:0 9px;list-style:none;border:1px solid var(--line);border-radius:12px;background:#fff;color:#505050;font-size:10px;font-weight:600;white-space:nowrap;cursor:pointer}
+.style-popover>summary::-webkit-details-marker{display:none}
+.style-popover>summary .material-symbols-outlined{font-size:16px}
+.toolbar-controls .panel-action.compact-action{display:inline-flex;align-items:center;justify-content:center;gap:4px;width:auto;min-width:54px;height:36px;padding:0 9px;border-radius:12px;font-size:10px;font-weight:600;white-space:nowrap}
+.toolbar-controls .compact-action>span:not(.material-symbols-outlined){display:inline}
+.toolbar-controls .compact-action .material-symbols-outlined{font-size:16px}
+.toolbar-controls .image-tools{display:flex;align-items:center;gap:4px;flex-wrap:nowrap}
+.toolbar-controls .image-tools .compact-action{min-width:62px}
+.toolbar-controls .image-tools #clear-image{min-width:36px;width:36px;padding:0}
+.toolbar-controls .type-style>.style-popover>div,.toolbar-controls .style-popover>.hue-panel,.toolbar-controls .style-popover>.draw-panel{position:absolute;left:0;right:auto;bottom:calc(100% + 10px);transform:none;z-index:30;border:1px solid #fff9;border-radius:16px;background:#f8f8f8f5;color:#444;box-shadow:0 10px 28px #0002;backdrop-filter:blur(16px)}
+.toolbar-controls .font-panel{width:250px;padding:10px}
+.font-panel .font-options{max-height:min(30vh,190px)}
+.style-popover .font-panel .size-tool{position:static!important;left:auto!important;right:auto!important;bottom:auto!important;transform:none!important;display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:4px 10px;min-width:0!important;width:100%!important;height:auto!important;margin-top:9px;padding:9px 8px 4px!important;border:0!important;border-top:1px solid #ddd!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;backdrop-filter:none!important;color:#555;font-size:10px}
+.font-panel .size-tool small{font:10px "DM Mono",monospace;color:#777}
+.font-panel .size-tool input{grid-column:1/4;width:100%!important;height:16px;accent-color:#555}
+.toolbar-controls .image-hue-panel .hue-panel{left:auto;right:0;width:210px}
+.toolbar-controls .draw-panel{width:250px;padding:11px}
+.toolbar-controls .draw-panel .brush-size{position:static!important;left:auto!important;right:auto!important;bottom:auto!important;transform:none!important;display:grid;grid-template-columns:1fr auto;gap:5px 8px;min-width:0!important;width:100%!important;height:auto!important;padding:2px 4px 12px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;backdrop-filter:none!important;white-space:normal;color:#555;font-size:10px}
+.toolbar-controls .draw-panel .brush-size input{grid-column:1/3;width:100%;height:16px;accent-color:#555}
+.toolbar-controls .draw-panel .popover-title{padding-top:8px}
+.toolbar-controls .draw-panel .clear-drawing{width:100%;justify-content:center;margin-top:8px}
+.toolbar-controls .fullscreen-toggle{width:36px;height:36px;flex:0 0 36px;border:1px solid var(--line);background:#fff}
+.toolbar-controls .fullscreen-toggle .material-symbols-outlined{font-size:18px}
+.transport .primary-icon{background:#222;color:#f8f8f8}
+html[data-theme="dark"] .edit-toolbar{background:#292929ed;border-color:#494949}
+html[data-theme="dark"] .toolbar-controls>#mode-switch{background:#343434;border-color:#505050}
+html[data-theme="dark"] .toolbar-controls .mode-option{color:#bbb}
+html[data-theme="dark"] .toolbar-controls .mode-option.active{background:#eee;color:#222}
+html[data-theme="dark"] .toolbar-controls .style-popover>summary,html[data-theme="dark"] .toolbar-controls .fullscreen-toggle{background:#303030;border-color:#505050;color:#eee}
+html[data-theme="dark"] .toolbar-controls .style-popover[open]>summary{background:#eee;color:#222;border-color:#eee}
+html[data-theme="dark"] .toolbar-controls .type-style>.style-popover>div,html[data-theme="dark"] .toolbar-controls .style-popover>.hue-panel,html[data-theme="dark"] .toolbar-controls .style-popover>.draw-panel{background:#292929f5;border-color:#505050;color:#eee}
+html[data-theme="dark"] .style-popover .font-panel .size-tool{border-top-color:#505050!important;color:#eee}
+html[data-theme="dark"] .font-panel .size-tool small{color:#aaa}
+.transport #edit{display:grid}
+.app.ui-minimized .brand-pill,.app.ui-minimized .theme-toggle,.app.ui-minimized #export,.app.ui-minimized #tweak-open,.app.ui-minimized .scene-meta,.app.ui-minimized .hint,.app.ui-minimized .edit-hint,.app.ui-minimized #copy,.app.ui-minimized #image-layer,.app.ui-minimized #drawing-layer{display:none!important}
+.app.ui-minimized .edit-toolbar{left:50%;right:auto;bottom:max(8px,env(safe-area-inset-bottom));width:52px;height:52px;padding:5px;transform:translateX(-50%);border-radius:50%;background:#f8f8f8e8}
+.app.ui-minimized #edit-toolbar{opacity:1!important;visibility:visible!important;pointer-events:auto!important;transform:translateX(-50%)!important}
+.app.ui-minimized .toolbar-controls{width:40px;height:40px;justify-content:center}
+.app.ui-minimized .toolbar-controls>:not(.fullscreen-toggle){display:none!important}
+.app.ui-minimized .toolbar-controls .fullscreen-toggle{display:grid;width:40px;height:40px;flex-basis:40px;border-radius:50%}
+.app.ui-minimized #minimize-ui{display:grid!important}
+@media(max-width:700px){
+  .edit-toolbar{width:calc(100vw - 20px);max-width:calc(100vw - 20px);bottom:max(8px,env(safe-area-inset-bottom));padding:6px;border-radius:18px}
+  .toolbar-controls{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"transport modes modes" "actions actions fullscreen";gap:6px 5px;width:100%}
+  .toolbar-controls>.transport{grid-area:transport;gap:1px}
+  .toolbar-controls>.transport .icon-button{width:31px;height:32px;flex-basis:31px}
+  .toolbar-controls>#mode-switch{grid-area:modes;justify-self:end;padding:2px;gap:1px}
+  .toolbar-controls .mode-option{min-width:42px;height:30px;padding:5px 6px;font-size:9px}
+  .toolbar-controls .draw-option{min-width:44px}
+  .toolbar-controls>.toolbar-actions{grid-area:actions;justify-content:flex-start;min-height:36px;gap:3px;padding-top:1px}
+  .toolbar-controls>.toolbar-actions::before{height:22px;margin:0 2px}
+  .toolbar-controls .style-popover>summary,.toolbar-controls .panel-action.compact-action{min-width:48px;height:34px;padding:0 7px;font-size:9px}
+  .toolbar-controls .style-popover>summary .material-symbols-outlined,.toolbar-controls .compact-action .material-symbols-outlined{font-size:15px}
+  .toolbar-controls .image-tools .compact-action{min-width:56px}
+  .toolbar-controls .image-tools #clear-image{min-width:32px;width:32px}
+  .toolbar-controls .fullscreen-toggle{grid-area:fullscreen;width:32px;height:32px;flex-basis:32px;justify-self:end}
+  .toolbar-controls .type-style>.style-popover>div,.toolbar-controls .style-popover>.hue-panel,.toolbar-controls .style-popover>.draw-panel{left:0;right:auto;bottom:calc(100% + 8px);max-height:calc(100dvh - 150px);overflow:auto}
+  .toolbar-controls .font-panel{width:min(250px,calc(100vw - 28px))}
+  .toolbar-controls .image-hue-panel .hue-panel{left:auto;right:0;width:min(210px,calc(100vw - 28px))}
+  .toolbar-controls .draw-settings .draw-panel{width:min(250px,calc(100vw - 28px))}
+  .scene-meta{left:max(12px,env(safe-area-inset-left));right:auto;bottom:max(124px,calc(env(safe-area-inset-bottom) + 116px));max-width:calc(100vw - 24px);font-size:8px;letter-spacing:.06em}
+}
+@media(max-width:340px){
+  .toolbar-controls{column-gap:3px}
+  .toolbar-controls>.transport .icon-button{width:29px;flex-basis:29px}
+  .toolbar-controls .mode-option{min-width:38px;padding-inline:4px}
+  .toolbar-controls .draw-option{min-width:41px}
+  .toolbar-controls .style-popover>summary,.toolbar-controls .panel-action.compact-action{min-width:43px;padding-inline:5px}
 }

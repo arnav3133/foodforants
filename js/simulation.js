@@ -6,12 +6,13 @@ export function createSimulation(canvas) {
   ctx.imageSmoothingEnabled = true;
   if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
   let width = 1, height = 1, dpr = 1;
-  let raf = 0, lastTime = 0, lastRenderTime = 0, accumulator = 0;
+  let raf = 0, lastTime = 0, lastRenderTime = 0, accumulator = 0, lastProgressEmit = 0;
   let paused = false, hiddenPause = false, wasPaused = false;
   let state = 'editing', age = 0, body = null, mask = null, silhouetteCanvas = null, silhouetteCtx = null, silhouetteScale = 1;
   let ants = [], crumbs = [], trails = [], boundary = [], boundaryFlags = null, textLayers = [];
   let total = 0, remaining = 0, source = '', cycleConfig = null, bites = 0;
   let biteTokens = 0;
+  const biteBrushes = new Map();
   let onUpdate = () => {};
   let trailClock = 0, customAntUrl = null, antSprites = null, lastBoundaryCompact = 0;
   let darkMode = false;
@@ -79,6 +80,30 @@ export function createSimulation(canvas) {
   }
 
   function emit() { onUpdate({ state, remaining, total }); }
+
+  function emitProgress() {
+    const now=performance.now();
+    if(now-lastProgressEmit<120)return;
+    lastProgressEmit=now;
+    emit();
+  }
+
+  function biteBrush(radius) {
+    let brush=biteBrushes.get(radius);
+    if(brush)return brush;
+    const scale=4, extent=radius+1.45, size=Math.ceil(extent*2*scale), center=size/2;
+    const canvas=makeCanvas(size,size), brushCtx=canvas.getContext('2d');
+    const edge=brushCtx.createRadialGradient(center,center,0,center,center,extent*scale);
+    edge.addColorStop(0,'rgba(0,0,0,1)');
+    edge.addColorStop(.78,'rgba(0,0,0,1)');
+    edge.addColorStop(.94,'rgba(0,0,0,.48)');
+    edge.addColorStop(1,'rgba(0,0,0,0)');
+    brushCtx.fillStyle=edge;
+    brushCtx.fillRect(0,0,size,size);
+    brush={canvas,extent:size/(2*scale)};
+    biteBrushes.set(radius,brush);
+    return brush;
+  }
 
   function targetBitesPerSecond() {
     const maxAnts=48;
@@ -507,17 +532,10 @@ export function createSimulation(canvas) {
       mask.data[index] = 0;
       removed++;
     }
-    const feather = biteRadius + 1.45;
-    const edge = mask.ctx.createRadialGradient(centerX + .5, centerY + .5, 0, centerX + .5, centerY + .5, feather);
-    edge.addColorStop(0, 'rgba(0,0,0,1)');
-    edge.addColorStop(.78, 'rgba(0,0,0,1)');
-    edge.addColorStop(.94, 'rgba(0,0,0,.48)');
-    edge.addColorStop(1, 'rgba(0,0,0,0)');
+    const brush=biteBrush(biteRadius), feather=brush.extent;
     mask.ctx.save();
     mask.ctx.globalCompositeOperation = 'destination-out';
-    mask.ctx.filter = width < 700 ? 'none' : 'blur(.55px)';
-    mask.ctx.fillStyle = edge;
-    mask.ctx.beginPath(); mask.ctx.arc(centerX + .5, centerY + .5, feather, 0, Math.PI * 2); mask.ctx.fill();
+    mask.ctx.drawImage(brush.canvas,centerX+.5-feather,centerY+.5-feather,feather*2,feather*2);
     mask.ctx.restore();
     for (const layer of textLayers) {
       const localX = centerX - layer.x, localY = centerY - layer.y;
@@ -525,15 +543,8 @@ export function createSimulation(canvas) {
       const highResCtx = layer.ctx;
       highResCtx.save();
       highResCtx.setTransform(layer.scale, 0, 0, layer.scale, 0, 0);
-      const textEdge = highResCtx.createRadialGradient(localX + .5, localY + .5, 0, localX + .5, localY + .5, feather);
-      textEdge.addColorStop(0, 'rgba(0,0,0,1)');
-      textEdge.addColorStop(.78, 'rgba(0,0,0,1)');
-      textEdge.addColorStop(.94, 'rgba(0,0,0,.48)');
-      textEdge.addColorStop(1, 'rgba(0,0,0,0)');
       highResCtx.globalCompositeOperation = 'destination-out';
-      highResCtx.filter = width < 700 ? 'none' : 'blur(.45px)';
-      highResCtx.fillStyle = textEdge;
-      highResCtx.beginPath(); highResCtx.arc(localX + .5, localY + .5, feather, 0, Math.PI * 2); highResCtx.fill();
+      highResCtx.drawImage(brush.canvas,localX+.5-feather,localY+.5-feather,feather*2,feather*2);
       highResCtx.restore();
     }
     remaining -= removed;
@@ -658,7 +669,7 @@ export function createSimulation(canvas) {
         }
       }
     }
-    if (bites > bitesBefore) emit();
+    if (bites > bitesBefore) emitProgress();
   }
 
   function update(dt) {
@@ -695,6 +706,8 @@ export function createSimulation(canvas) {
     ctx.save();
     ctx.strokeStyle = darkMode ? '#f0f0f0' : '#181818'; ctx.fillStyle = ctx.strokeStyle;
     ctx.lineWidth = .95; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const knees=[];
+    ctx.beginPath();
     for (let leg = 0; leg < 6; leg++) {
       const pair = Math.floor(leg / 2), side = leg % 2 === 0 ? -1 : 1;
       const rate = ant.legRates?.[leg] ?? (1 + leg * .037);
@@ -705,9 +718,15 @@ export function createSimulation(canvas) {
       const footY = tipY[pair] - lift + Math.sin(phase * .73) * stride * .45;
       const kneeX = side * (reach[pair] * .46 + Math.cos(phase + .6) * stride * .28);
       const kneeY = rootY[pair] + (footY - rootY[pair]) * .5;
-      ctx.beginPath(); ctx.moveTo(0, rootY[pair]); ctx.lineTo(kneeX, kneeY); ctx.lineTo(footX, footY); ctx.stroke();
-      ctx.beginPath(); ctx.arc(kneeX, kneeY, .48, 0, Math.PI * 2); ctx.fill();
+      knees.push([kneeX,kneeY]);
+      ctx.moveTo(0, rootY[pair]); ctx.lineTo(kneeX, kneeY); ctx.lineTo(footX, footY);
     }
+    ctx.stroke();
+    ctx.beginPath();
+    for(const [kneeX,kneeY] of knees){
+      ctx.moveTo(kneeX+.48,kneeY);ctx.arc(kneeX,kneeY,.48,0,Math.PI*2);
+    }
+    ctx.fill();
     ctx.restore();
   }
 

@@ -5,7 +5,7 @@ const ui = {
   canvas:$('scene'), editor:$('copy'), fontOptions:$('font-options'), color:$('text-color'), size:$('size'), autofit:$('autofit'),
   imageLayer:$('image-layer'), drawingLayer:$('drawing-layer'), imageFile:$('image-file'), editSize:$('edit-size'), trails:$('trails'),
   editToolbar:$('edit-toolbar'), editHint:$('edit-hint'), hint:$('hint'), state:$('state-label'), remaining:$('remaining'),
-  typeStyle:$('type-style'), imageTools:$('image-tools'), imageHuePanel:$('image-hue-panel'), drawSettings:$('draw-settings'), addTextLayer:$('add-text-layer'), undoDrawing:$('undo-drawing'), minimizeUI:$('minimize-ui'), restoreUI:$('restore-ui'), modeText:$('mode-text'), modeImage:$('mode-image'), modeDraw:$('mode-draw'),
+  typeStyle:$('type-style'), imageTools:$('image-tools'), imageHuePanel:$('image-hue-panel'), drawSettings:$('draw-settings'), addTextLayer:$('add-text-layer'), undoDrawing:$('undo-drawing'), minimizeUI:$('minimize-ui'), modeText:$('mode-text'), modeImage:$('mode-image'), modeDraw:$('mode-draw'),
   playPause:$('play-pause'), replay:$('replay'), edit:$('edit'), preset:$('preset'),
   antSpeed:$('ant-speed'), antCount:$('ant-count'), decaySpeed:$('decay-speed'), antChaos:$('ant-chaos'), frequency:$('eating-frequency'), resistance:$('resistance'), deform:$('deform'), dialog:$('tweaks'), theme:$('theme-toggle')
 };
@@ -180,6 +180,7 @@ function preview() {
   }
   ui.editor.style.height = `${Math.min(ui.editor.scrollHeight, maxHeight)}px`;
   $('size-value').textContent = `${current.size} px`;
+  $('edit-size-value').textContent = `${current.size} px`;
   ui.editSize.value = String(current.size);
   ui.editHint.textContent = contentMode === 'text'
     ? 'Enter to feed · Shift + Enter for a new line'
@@ -333,9 +334,20 @@ ui.playPause.addEventListener('click', async () => {
 ui.replay.addEventListener('click', () => { ui.editor.value = cycleText; editMode = true; startFeeding(); });
 ui.edit.addEventListener('click', setEditing);
 const appShell=$('app');
-ui.minimizeUI.addEventListener('click',()=>{closeStylePopovers();$('tweaks').close();$('about').close();appShell.classList.add('ui-minimized');ui.restoreUI.focus();});
-ui.restoreUI.addEventListener('click',()=>{appShell.classList.remove('ui-minimized');ui.minimizeUI.focus();});
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&appShell.classList.contains('ui-minimized')){appShell.classList.remove('ui-minimized');ui.minimizeUI.focus();}});
+function setInterfaceHidden(hidden){
+  appShell.classList.toggle('ui-minimized',hidden);
+  const icon=ui.minimizeUI.querySelector('.material-symbols-outlined');
+  icon.textContent=hidden?'fullscreen_exit':'fullscreen';
+  ui.minimizeUI.setAttribute('aria-label',hidden?'Show interface':'Hide interface');
+  ui.minimizeUI.title=hidden?'Show interface':'Hide interface';
+}
+ui.minimizeUI.addEventListener('click',()=>{
+  const hide=!appShell.classList.contains('ui-minimized');
+  if(hide){closeStylePopovers();$('tweaks').close();$('about').close();}
+  setInterfaceHidden(hide);
+  ui.minimizeUI.focus();
+});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&appShell.classList.contains('ui-minimized')){setInterfaceHidden(false);ui.minimizeUI.focus();}});
 
 $('tweak-open').addEventListener('click', () => {
   closeStylePopovers();
