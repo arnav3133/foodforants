@@ -6,12 +6,12 @@ const ui = {
   imageLayer:$('image-layer'), imageFile:$('image-file'), editSize:$('edit-size'), trails:$('trails'),
   editToolbar:$('edit-toolbar'), editHint:$('edit-hint'), hint:$('hint'), state:$('state-label'), remaining:$('remaining'),
   typeStyle:$('type-style'), imageTools:$('image-tools'), modeText:$('mode-text'), modeImage:$('mode-image'),
-  addText:$('add-text'), additionActions:$('addition-actions'), confirmAdd:$('confirm-add'), cancelAdd:$('cancel-add'),
+  additionActions:$('addition-actions'), confirmAdd:$('confirm-add'), cancelAdd:$('cancel-add'),
   playPause:$('play-pause'), replay:$('replay'), edit:$('edit'), preset:$('preset'),
   antSpeed:$('ant-speed'), antChaos:$('ant-chaos'), frequency:$('eating-frequency'), resistance:$('resistance'), deform:$('deform'), dialog:$('tweaks'), theme:$('theme-toggle')
 };
 const sim = createSimulation(ui.canvas);
-let editMode = true, committing = false, liveTextEntry = false, liveTextDraft = '', liveTextReturnMode = 'text';
+let editMode = true, committing = false;
 let contentMode = 'text';
 let images = [], selectedImageId = null, imageSequence = 0, cycleText = '';
 const fonts = {
@@ -37,15 +37,14 @@ function status(message, error = false) {
 function preview() {
   const current = config();
   const pending = images.some(item=>item.pending);
-  const showTextEntry = contentMode === 'text' && (editMode || liveTextEntry);
+  const showTextEntry = contentMode === 'text' && editMode;
   ui.editor.hidden = !showTextEntry;
   ui.editor.classList.toggle('is-hidden', !showTextEntry);
   ui.editToolbar.hidden = false;
   ui.editHint.hidden = !editMode || contentMode !== 'text';
-  ui.typeStyle.hidden = contentMode !== 'text';
+  ui.typeStyle.hidden = !editMode || contentMode !== 'text';
   ui.imageTools.hidden = contentMode !== 'image';
-  ui.addText.hidden = editMode || contentMode !== 'text' || liveTextEntry;
-  const additionActive = !editMode && (liveTextEntry || pending || !!liveTextDraft);
+  const additionActive = !editMode && pending;
   ui.additionActions.hidden = !additionActive;
   ui.cancelAdd.hidden = !additionActive;
   ui.modeText.classList.toggle('active', contentMode === 'text');
@@ -77,26 +76,18 @@ function preview() {
     : 'Add, drag, resize, or paste images. Click outside to commit.';
 }
 function setMode(mode) {
-  if (!editMode && mode === 'text' && !liveTextEntry) {
-    liveTextReturnMode = contentMode;
-    contentMode = 'text'; liveTextEntry = true; ui.editor.value = liveTextDraft;
-    ui.editor.placeholder = 'Add text to the running scene';
-    preview(); ui.editor.focus();
-    status('Type in the center, then press Enter to add it live.');
+  if (mode === contentMode) {
+    if (!editMode && mode === 'text') status('Text is locked during a run. Use Edit to change it and start a new run.');
     return;
   }
-  if (mode === contentMode) return;
-  if (!editMode && liveTextEntry) liveTextDraft = ui.editor.value;
   contentMode = mode;
-  if (!editMode) liveTextEntry = false;
   preview();
   status(!editMode
-    ? (mode === 'image' ? 'Add or paste images, position them, then click outside to add them live.' : 'Type in the center. Press Enter to add text live.')
+    ? (mode === 'image' ? 'Add images, then confirm with ✓ or cancel with ×.' : 'The original text is fixed for this run. Choose Images to add more material.')
     : (mode === 'image' ? 'Drop or add images. Press Enter to start feeding.' : 'Type in the center. Press Enter to feed.'));
 }
 ui.modeText.addEventListener('click', () => setMode('text'));
 ui.modeImage.addEventListener('click', () => setMode('image'));
-ui.addText.addEventListener('click', () => setMode('text'));
 function updatePlayButton() {
   const icon = ui.playPause.querySelector('.material-symbols-outlined');
   const active = !editMode && !sim.paused;
@@ -106,9 +97,7 @@ function updatePlayButton() {
   ui.playPause.title = label;
 }
 function setEditing() {
-  if (!editMode && !liveTextEntry) ui.editor.value = cycleText;
-  liveTextEntry = false;
-  liveTextDraft = '';
+  if (!editMode) ui.editor.value = cycleText;
   sim.cancel();
   editMode = true;
   ui.editor.classList.remove('is-hidden');
@@ -138,7 +127,6 @@ async function startFeeding() {
     await document.fonts.ready;
     await sim.start(current);
     editMode = false;
-    liveTextEntry = false;
     selectedImageId = null;
     ui.editor.classList.add('is-hidden');
     ui.imageLayer.hidden = true;
@@ -156,43 +144,6 @@ async function startFeeding() {
   } finally { committing = false; }
 }
 
-function commitLiveText() {
-  const text = ui.editor.value.trim();
-  if (!text) { status('Type something before adding it to the scene.', true); return; }
-  if (graphemes(text) > 500) { status('This text is over the 500 grapheme limit.', true); return; }
-  const rect = ui.editor.getBoundingClientRect(), scene = ui.canvas.getBoundingClientRect();
-  if (!rect.width || !rect.height || !scene.width || !scene.height) return;
-  const canvas = document.createElement('canvas');
-  const textScale = Math.min(Math.max(window.devicePixelRatio || 1, 2), 3);
-  canvas.width = Math.max(1, Math.round(rect.width * textScale));
-  canvas.height = Math.max(1, Math.round(rect.height * textScale));
-  const ctx = canvas.getContext('2d'); ctx.scale(textScale, textScale);
-  const style = getComputedStyle(ui.editor), fontSize = parseFloat(style.fontSize);
-  ctx.fillStyle = ui.color.value; ctx.font = `${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  if ('letterSpacing' in ctx) ctx.letterSpacing = style.letterSpacing;
-  const maxWidth = rect.width * .94, lineHeight = fontSize * 1.12, lines = [];
-  for (const paragraph of text.split('\n')) {
-    let line = '';
-    for (const word of paragraph.split(/\s+/)) {
-      const next = line ? `${line} ${word}` : word;
-      if (line && ctx.measureText(next).width > maxWidth) { lines.push(line); line = word; }
-      else line = next;
-    }
-    lines.push(line);
-  }
-  const firstY = rect.height / 2 - (lines.length - 1) * lineHeight / 2;
-  lines.forEach((line, index) => ctx.fillText(line, rect.width / 2, firstY + index * lineHeight, maxWidth));
-  const item = { id:`live-text-${++imageSequence}`, image:canvas, url:canvas.toDataURL('image/png'), name:`Live text: ${text.slice(0,32)}`,
-    pending:false, kind:'live-text', x:(rect.left-scene.left)/scene.width, y:(rect.top-scene.top)/scene.height,
-    w:rect.width/scene.width, h:rect.height/scene.height };
-  try {
-    sim.addImages([{ image:canvas, x:item.x, y:item.y, w:item.w, h:item.h, kind:'live-text' }]);
-    images.push(item); ui.editor.value = ''; liveTextDraft = ''; liveTextEntry = false; preview();
-    status('Text added to the running simulation. Existing decay is preserved.');
-  } catch (error) { status(error.message || 'Could not add the text.', true); }
-}
-
 ui.editor.addEventListener('input', () => {
   preview();
   if (graphemes(ui.editor.value) > 500) status('Over the 500 grapheme limit. Your complete draft is preserved.', true);
@@ -202,7 +153,6 @@ ui.editor.addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229 && !event.repeat) {
     event.preventDefault();
     if (editMode) startFeeding();
-    else if (liveTextEntry) commitLiveText();
   }
 });
 ui.font.addEventListener('change', preview);
@@ -220,16 +170,12 @@ ui.cancelAdd.addEventListener('click', () => {
     images.splice(index, 1);
   }
   selectedImageId = null;
-  ui.editor.value = '';
-  liveTextDraft = '';
-  liveTextEntry = false;
-  contentMode = liveTextReturnMode;
+  contentMode = 'image';
   preview();
   status('Addition cancelled. The running scene continues.');
 });
 
 ui.confirmAdd.addEventListener('click', () => {
-  if (liveTextEntry) { commitLiveText(); return; }
   if (images.some(item => item.pending)) commitPendingImages();
 });
 
@@ -246,7 +192,7 @@ ui.playPause.addEventListener('click', async () => {
   else { sim.pause(); status('Feeding paused.'); }
   updatePlayButton();
 });
-ui.replay.addEventListener('click', () => { ui.editor.value = cycleText; liveTextEntry = false; editMode = true; startFeeding(); });
+ui.replay.addEventListener('click', () => { ui.editor.value = cycleText; editMode = true; startFeeding(); });
 ui.edit.addEventListener('click', setEditing);
 
  $('tweak-open').addEventListener('click', () => { if (!ui.dialog.open) ui.dialog.showModal(); });
@@ -398,7 +344,7 @@ function setImage(file, dropPoint = null) {
     contentMode = 'image';
     images.push(item); selectedImageId = item.id;
     preview();
-    status(live ? 'Position the new image, then click anywhere outside it to add it to the running simulation.' : `${images.length} image${images.length===1?'':'s'} ready. Drag to move; use a corner handle to resize.`);
+    status(live ? 'Position the image, then tap ✓ to add it or × to cancel.' : `${images.length} image${images.length===1?'':'s'} ready. Drag to move; use a corner handle to resize.`);
     if (!live) ui.playPause.focus();
   };
   image.onerror = () => { URL.revokeObjectURL(url); status('This image could not be opened.', true); };
@@ -451,9 +397,6 @@ function commitPendingImages() {
     status('Image added to the live simulation. Existing decay is preserved.');
   } catch (error) { status(error.message || 'Could not add the image to the simulation.', true); }
 }
-document.addEventListener('pointerdown', event => {
-  if (images.some(item=>item.pending) && !ui.imageLayer.contains(event.target) && !event.target.closest('#clear-image, #cancel-add, #confirm-add')) commitPendingImages();
-}, true);
 stage.addEventListener('dragover', event => { if ([...(event.dataTransfer?.items||[])].some(item=>item.kind==='file')) {event.preventDefault();stage.classList.add('is-dragging');} });
 stage.addEventListener('dragleave', event => { if (!stage.contains(event.relatedTarget)) stage.classList.remove('is-dragging'); });
 stage.addEventListener('drop', event => {
