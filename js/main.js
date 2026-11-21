@@ -6,13 +6,14 @@ const ui = {
   imageLayer:$('image-layer'), imageFile:$('image-file'), editSize:$('edit-size'), trails:$('trails'),
   editToolbar:$('edit-toolbar'), editHint:$('edit-hint'), hint:$('hint'), state:$('state-label'), remaining:$('remaining'),
   typeStyle:$('type-style'), imageTools:$('image-tools'), modeText:$('mode-text'), modeImage:$('mode-image'),
+  addText:$('add-text'), additionActions:$('addition-actions'), confirmAdd:$('confirm-add'), cancelAdd:$('cancel-add'),
   playPause:$('play-pause'), replay:$('replay'), edit:$('edit'), preset:$('preset'),
   antSpeed:$('ant-speed'), antChaos:$('ant-chaos'), frequency:$('eating-frequency'), resistance:$('resistance'), deform:$('deform'), dialog:$('tweaks'), theme:$('theme-toggle')
 };
 const sim = createSimulation(ui.canvas);
-let editMode = true, committing = false;
+let editMode = true, committing = false, liveTextEntry = false, liveTextDraft = '', liveTextReturnMode = 'text';
 let contentMode = 'text';
-let images = [], selectedImageId = null, imageSequence = 0;
+let images = [], selectedImageId = null, imageSequence = 0, cycleText = '';
 const fonts = {
   'dm-sans':'"DM Sans", sans-serif',
   'space-grotesk':'"Space Grotesk", sans-serif',
@@ -27,7 +28,7 @@ function graphemes(text) { return [...new Intl.Segmenter(undefined, { granularit
 function config() {
   return { text:ui.editor.value, font:fonts[ui.font.value], textColor:ui.color.value,
     size:Number(ui.size.value), auto:ui.autofit.checked, weight:600, style:'normal', tracking:-.055, preset:ui.preset.value,
-    images:contentMode === 'image' ? images.filter(item=>!item.pending).map(({image,x,y,w,h})=>({image,x,y,w,h})) : [] };
+    images:images.filter(item=>!item.pending).map(({image,x,y,w,h})=>({image,x,y,w,h})) };
 }
 function status(message, error = false) {
   ui.hint.textContent = message;
@@ -36,17 +37,22 @@ function status(message, error = false) {
 function preview() {
   const current = config();
   const pending = images.some(item=>item.pending);
-  ui.editor.hidden = !editMode || contentMode !== 'text';
-  ui.editor.classList.toggle('is-hidden', !editMode || contentMode !== 'text');
-  ui.editToolbar.hidden = !editMode && contentMode !== 'image';
+  const showTextEntry = contentMode === 'text' && (editMode || liveTextEntry);
+  ui.editor.hidden = !showTextEntry;
+  ui.editor.classList.toggle('is-hidden', !showTextEntry);
+  ui.editToolbar.hidden = false;
   ui.editHint.hidden = !editMode || contentMode !== 'text';
-  ui.typeStyle.hidden = !editMode || contentMode !== 'text';
+  ui.typeStyle.hidden = contentMode !== 'text';
   ui.imageTools.hidden = contentMode !== 'image';
+  ui.addText.hidden = editMode || contentMode !== 'text' || liveTextEntry;
+  const additionActive = !editMode && (liveTextEntry || pending || !!liveTextDraft);
+  ui.additionActions.hidden = !additionActive;
+  ui.cancelAdd.hidden = !additionActive;
   ui.modeText.classList.toggle('active', contentMode === 'text');
   ui.modeImage.classList.toggle('active', contentMode === 'image');
   ui.modeText.setAttribute('aria-pressed', String(contentMode === 'text'));
   ui.modeImage.setAttribute('aria-pressed', String(contentMode === 'image'));
-  ui.imageLayer.hidden = !(editMode && contentMode === 'image' && images.length) && !pending;
+  ui.imageLayer.hidden = !(editMode && images.length) && !pending;
   $('clear-image').hidden = !selectedImageId;
   renderImageLayers();
   ui.editor.style.fontFamily = current.font;
@@ -68,17 +74,29 @@ function preview() {
   ui.editSize.value = String(current.size);
   ui.editHint.textContent = contentMode === 'text'
     ? 'Enter to feed · Shift + Enter for a new line'
-    : 'Drop, drag, resize, and arrange images. Click outside to feed.';
+    : 'Add, drag, resize, or paste images. Click outside to commit.';
 }
 function setMode(mode) {
+  if (!editMode && mode === 'text' && !liveTextEntry) {
+    liveTextReturnMode = contentMode;
+    contentMode = 'text'; liveTextEntry = true; ui.editor.value = liveTextDraft;
+    ui.editor.placeholder = 'Add text to the running scene';
+    preview(); ui.editor.focus();
+    status('Type in the center, then press Enter to add it live.');
+    return;
+  }
   if (mode === contentMode) return;
+  if (!editMode && liveTextEntry) liveTextDraft = ui.editor.value;
   contentMode = mode;
-  if (contentMode !== 'text') ui.typeStyle.open = false;
+  if (!editMode) liveTextEntry = false;
   preview();
-  status(mode === 'image' ? 'Drop or add images. Press Enter to start feeding.' : 'Type in the center. Press Enter to feed.');
+  status(!editMode
+    ? (mode === 'image' ? 'Add or paste images, position them, then click outside to add them live.' : 'Type in the center. Press Enter to add text live.')
+    : (mode === 'image' ? 'Drop or add images. Press Enter to start feeding.' : 'Type in the center. Press Enter to feed.'));
 }
 ui.modeText.addEventListener('click', () => setMode('text'));
 ui.modeImage.addEventListener('click', () => setMode('image'));
+ui.addText.addEventListener('click', () => setMode('text'));
 function updatePlayButton() {
   const icon = ui.playPause.querySelector('.material-symbols-outlined');
   const active = !editMode && !sim.paused;
@@ -88,6 +106,9 @@ function updatePlayButton() {
   ui.playPause.title = label;
 }
 function setEditing() {
+  if (!editMode && !liveTextEntry) ui.editor.value = cycleText;
+  liveTextEntry = false;
+  liveTextDraft = '';
   sim.cancel();
   editMode = true;
   ui.editor.classList.remove('is-hidden');
@@ -101,22 +122,23 @@ function setEditing() {
   ui.remaining.textContent = '';
   preview();
   updatePlayButton();
-  status(contentMode === 'image' ? 'Arrange the collage, then press Enter to feed.' : 'Type, then press Enter to feed. Text styling is tucked under Text style.');
+  status(contentMode === 'image' ? 'Arrange the collage, then press Enter to feed.' : 'Type, choose a font, size, and color, then press Enter to feed.');
   if (contentMode === 'image' && images.length) ui.imageLayer.focus?.(); else ui.editor.focus();
 }
 async function startFeeding() {
   if (committing || !editMode) return;
   const current = config();
-  if (contentMode === 'image' && !current.images.length) { status('Add one or more images to start the image simulation.', true); return; }
-  if (contentMode === 'text' && !current.text.trim()) { status('Type something before starting the text simulation.', true); ui.editor.focus(); return; }
-  if (contentMode === 'text' && graphemes(current.text) > 500) { status('This draft is over the 500 grapheme limit. Shorten it before starting; your full text is preserved.', true); return; }
+  if (!current.images.length && !current.text.trim()) { status('Add text or an image before starting.', true); ui.editor.focus(); return; }
+  if (current.text.trim() && graphemes(current.text) > 500) { status('This draft is over the 500 grapheme limit. Shorten it before starting; your full text is preserved.', true); return; }
   committing = true;
+  cycleText = current.text;
   ui.playPause.disabled = true;
-    status(contentMode === 'image' ? 'Preparing the collage…' : 'Preparing the text…');
+    status(current.images.length && current.text.trim() ? 'Preparing text and images…' : current.images.length ? 'Preparing the collage…' : 'Preparing the text…');
   try {
     await document.fonts.ready;
     await sim.start(current);
     editMode = false;
+    liveTextEntry = false;
     selectedImageId = null;
     ui.editor.classList.add('is-hidden');
     ui.imageLayer.hidden = true;
@@ -134,6 +156,43 @@ async function startFeeding() {
   } finally { committing = false; }
 }
 
+function commitLiveText() {
+  const text = ui.editor.value.trim();
+  if (!text) { status('Type something before adding it to the scene.', true); return; }
+  if (graphemes(text) > 500) { status('This text is over the 500 grapheme limit.', true); return; }
+  const rect = ui.editor.getBoundingClientRect(), scene = ui.canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height || !scene.width || !scene.height) return;
+  const canvas = document.createElement('canvas');
+  const textScale = Math.min(Math.max(window.devicePixelRatio || 1, 2), 3);
+  canvas.width = Math.max(1, Math.round(rect.width * textScale));
+  canvas.height = Math.max(1, Math.round(rect.height * textScale));
+  const ctx = canvas.getContext('2d'); ctx.scale(textScale, textScale);
+  const style = getComputedStyle(ui.editor), fontSize = parseFloat(style.fontSize);
+  ctx.fillStyle = ui.color.value; ctx.font = `${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if ('letterSpacing' in ctx) ctx.letterSpacing = style.letterSpacing;
+  const maxWidth = rect.width * .94, lineHeight = fontSize * 1.12, lines = [];
+  for (const paragraph of text.split('\n')) {
+    let line = '';
+    for (const word of paragraph.split(/\s+/)) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && ctx.measureText(next).width > maxWidth) { lines.push(line); line = word; }
+      else line = next;
+    }
+    lines.push(line);
+  }
+  const firstY = rect.height / 2 - (lines.length - 1) * lineHeight / 2;
+  lines.forEach((line, index) => ctx.fillText(line, rect.width / 2, firstY + index * lineHeight, maxWidth));
+  const item = { id:`live-text-${++imageSequence}`, image:canvas, url:canvas.toDataURL('image/png'), name:`Live text: ${text.slice(0,32)}`,
+    pending:false, kind:'live-text', x:(rect.left-scene.left)/scene.width, y:(rect.top-scene.top)/scene.height,
+    w:rect.width/scene.width, h:rect.height/scene.height };
+  try {
+    sim.addImages([{ image:canvas, x:item.x, y:item.y, w:item.w, h:item.h, kind:'live-text' }]);
+    images.push(item); ui.editor.value = ''; liveTextDraft = ''; liveTextEntry = false; preview();
+    status('Text added to the running simulation. Existing decay is preserved.');
+  } catch (error) { status(error.message || 'Could not add the text.', true); }
+}
+
 ui.editor.addEventListener('input', () => {
   preview();
   if (graphemes(ui.editor.value) > 500) status('Over the 500 grapheme limit. Your complete draft is preserved.', true);
@@ -142,7 +201,8 @@ ui.editor.addEventListener('input', () => {
 ui.editor.addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229 && !event.repeat) {
     event.preventDefault();
-    startFeeding();
+    if (editMode) startFeeding();
+    else if (liveTextEntry) commitLiveText();
   }
 });
 ui.font.addEventListener('change', preview);
@@ -152,13 +212,41 @@ ui.autofit.addEventListener('change', preview);
 ui.color.addEventListener('input', preview);
 document.querySelector('.stage-wrap').addEventListener('dblclick', () => { if (!editMode) setEditing(); });
 
+ui.cancelAdd.addEventListener('click', () => {
+  for (let index = images.length - 1; index >= 0; index--) {
+    const item = images[index];
+    if (!item.pending) continue;
+    URL.revokeObjectURL(item.url);
+    images.splice(index, 1);
+  }
+  selectedImageId = null;
+  ui.editor.value = '';
+  liveTextDraft = '';
+  liveTextEntry = false;
+  contentMode = liveTextReturnMode;
+  preview();
+  status('Addition cancelled. The running scene continues.');
+});
+
+ui.confirmAdd.addEventListener('click', () => {
+  if (liveTextEntry) { commitLiveText(); return; }
+  if (images.some(item => item.pending)) commitPendingImages();
+});
+
+ui.canvas.addEventListener('click', () => {
+  if (editMode || committing) return;
+  if (sim.paused) { sim.resume(); status('Feeding resumed.'); }
+  else { sim.pause(); status('Feeding paused.'); }
+  updatePlayButton();
+});
+
 ui.playPause.addEventListener('click', async () => {
   if (editMode) { await startFeeding(); return; }
   if (sim.paused) { sim.resume(); status('Feeding resumed.'); }
   else { sim.pause(); status('Feeding paused.'); }
   updatePlayButton();
 });
-ui.replay.addEventListener('click', () => { editMode = true; startFeeding(); });
+ui.replay.addEventListener('click', () => { ui.editor.value = cycleText; liveTextEntry = false; editMode = true; startFeeding(); });
 ui.edit.addEventListener('click', setEditing);
 
  $('tweak-open').addEventListener('click', () => { if (!ui.dialog.open) ui.dialog.showModal(); });
@@ -206,9 +294,8 @@ function exportEditingFrame() {
   const output = document.createElement('canvas'); output.width = width * scale; output.height = height * scale;
   const context = output.getContext('2d'); context.scale(scale, scale);
   context.drawImage(ui.canvas, 0, 0, width, height);
-  if (contentMode === 'image' && images.length) {
-    for (const item of images) context.drawImage(item.image, item.x * width, item.y * height, item.w * width, item.h * height);
-  } else if (ui.editor.value.trim()) {
+  for (const item of images) context.drawImage(item.image, item.x * width, item.y * height, item.w * width, item.h * height);
+  if (ui.editor.value.trim()) {
     const style = getComputedStyle(ui.editor), rect = ui.editor.getBoundingClientRect();
     const fontSize = parseFloat(style.fontSize), lineHeight = parseFloat(style.lineHeight) || fontSize * 1.04;
     const spacing = fontSize * -.055, maxWidth = rect.width;
@@ -238,7 +325,7 @@ function exportEditingFrame() {
 }
 function renderImageLayers() {
   ui.imageLayer.replaceChildren();
-  const visible = editMode && contentMode === 'image' ? images : images.filter(item=>item.pending);
+  const visible = editMode ? images : images.filter(item=>item.pending);
   for (const item of visible) {
     const wrapper = document.createElement('div');
     wrapper.className = `image-item${item.id === selectedImageId ? ' selected' : ''}`;
@@ -365,7 +452,7 @@ function commitPendingImages() {
   } catch (error) { status(error.message || 'Could not add the image to the simulation.', true); }
 }
 document.addEventListener('pointerdown', event => {
-  if (images.some(item=>item.pending) && !ui.imageLayer.contains(event.target) && !event.target.closest('#clear-image')) commitPendingImages();
+  if (images.some(item=>item.pending) && !ui.imageLayer.contains(event.target) && !event.target.closest('#clear-image, #cancel-add, #confirm-add')) commitPendingImages();
 }, true);
 stage.addEventListener('dragover', event => { if ([...(event.dataTransfer?.items||[])].some(item=>item.kind==='file')) {event.preventDefault();stage.classList.add('is-dragging');} });
 stage.addEventListener('dragleave', event => { if (!stage.contains(event.relatedTarget)) stage.classList.remove('is-dragging'); });

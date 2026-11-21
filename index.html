@@ -22,33 +22,33 @@
       <label class="theme-toggle" title="Switch between light and dark mode"><span class="material-symbols-outlined" aria-hidden="true">light_mode</span><input id="theme-toggle" type="checkbox" role="switch" aria-label="Dark mode"><span class="material-symbols-outlined" aria-hidden="true">dark_mode</span></label>
       <button id="export" class="tweak-trigger frame-export" title="Download this frame"><span class="material-symbols-outlined" aria-hidden="true">download</span><span>Download frame</span></button>
       <button id="tweak-open" class="tweak-trigger" aria-haspopup="dialog" aria-controls="tweaks"><span class="material-symbols-outlined" aria-hidden="true">tune</span><span>Tweak</span></button>
-      <div id="mode-switch" class="mode-switch" role="group" aria-label="Composition mode">
-        <button id="mode-text" class="mode-option active" type="button" aria-pressed="true">Text</button>
-        <button id="mode-image" class="mode-option" type="button" aria-pressed="false">Images</button>
-      </div>
       <div class="scene-meta"><span id="state-label" aria-live="polite">READY TO FEED</span><span id="remaining"></span></div>
       <div id="hint" class="hint" role="status">Type in the center. Press Enter to begin.</div>
       <div id="edit-hint" class="edit-hint">Enter to feed <i>·</i> Shift + Enter for a new line <i>·</i> Add, drag, or paste images to build a collage</div>
-      <div id="edit-toolbar" class="edit-toolbar" aria-label="Text appearance">
-        <details id="type-style" class="type-style">
-          <summary><span class="material-symbols-outlined" aria-hidden="true">tune</span><span>Text style</span></summary>
-          <div class="type-controls">
-            <label class="tool-select" title="Choose a typeface for your next feeding cycle."><span class="material-symbols-outlined" aria-hidden="true">text_fields</span><select id="font" aria-label="Typeface"><option value="dm-sans">DM Sans</option><option value="space-grotesk">Space Grotesk</option><option value="manrope">Manrope</option><option value="playfair">Playfair Display</option><option value="fraunces">Fraunces</option><option value="dm-mono">DM Mono</option><option value="plex-mono">IBM Plex Mono</option></select></label>
-            <label class="size-tool" title="Set the text size"><span>Size</span><input id="edit-size" type="range" min="28" max="160" value="88" aria-label="Text size"></label>
-            <label class="color-tool" title="Choose a text color"><span>Text color</span><input id="text-color" type="color" value="#5b5b5b" aria-label="Text color"></label>
-          </div>
-        </details>
-        <div id="image-tools" class="image-tools" hidden>
-          <button id="add-image" class="panel-action compact-action" title="Choose one or more PNG, JPEG, or SVG images"><span class="material-symbols-outlined" aria-hidden="true">image</span><span>Add images</span></button>
-          <button id="paste-image" class="panel-action compact-action" title="Paste images from the clipboard"><span class="material-symbols-outlined" aria-hidden="true">content_paste</span><span>Paste</span></button>
-          <button id="clear-image" class="panel-action compact-action" title="Remove the selected image" hidden><span class="material-symbols-outlined" aria-hidden="true">close</span><span>Remove</span></button>
-          <span class="image-mode-hint">Live additions: click outside an image to commit.</span>
+      <div id="edit-toolbar" class="edit-toolbar" aria-label="Composition and simulation controls">
+        <div id="type-style" class="type-style" aria-label="Text styling tools">
+          <details class="style-popover"><summary aria-label="Choose font" title="Font"><span class="material-symbols-outlined" aria-hidden="true">text_fields</span></summary><label class="tool-select"><span>Font</span><select id="font" aria-label="Typeface"><option value="dm-sans">DM Sans</option><option value="space-grotesk">Space Grotesk</option><option value="manrope">Manrope</option><option value="playfair">Playfair Display</option><option value="fraunces">Fraunces</option><option value="dm-mono">DM Mono</option><option value="plex-mono">IBM Plex Mono</option></select></label></details>
+          <details class="style-popover"><summary aria-label="Text size" title="Text size"><span class="material-symbols-outlined" aria-hidden="true">format_size</span></summary><label class="size-tool"><span>Size</span><input id="edit-size" type="range" min="28" max="160" value="88" aria-label="Text size"></label></details>
+          <details class="style-popover"><summary aria-label="Text color" title="Text color"><span class="material-symbols-outlined" aria-hidden="true">palette</span></summary><label class="color-tool"><span>Text color</span><input id="text-color" type="color" value="#5b5b5b" aria-label="Text color"></label></details>
         </div>
-      </div>
-      <div class="transport" role="group" aria-label="Simulation controls">
-        <button id="play-pause" class="icon-button primary-icon" aria-label="Start feeding" title="Start feeding"><span class="material-symbols-outlined" aria-hidden="true">play_arrow</span></button>
-        <button id="replay" class="icon-button" aria-label="Replay" title="Replay" disabled><span class="material-symbols-outlined" aria-hidden="true">replay</span></button>
-        <button id="edit" class="icon-button" aria-label="Edit text" title="Edit text" disabled><span class="material-symbols-outlined" aria-hidden="true">edit</span></button>
+        <div class="toolbar-actions">
+          <div id="mode-switch" class="mode-switch" role="group" aria-label="Composition mode">
+            <button id="mode-text" class="mode-option active" type="button" aria-pressed="true">Text</button>
+            <button id="mode-image" class="mode-option" type="button" aria-pressed="false">Images</button>
+          </div>
+          <button id="add-text" class="panel-action compact-action add-text-action" title="Add text to the running simulation" hidden><span class="material-symbols-outlined" aria-hidden="true">add</span><span class="material-symbols-outlined" aria-hidden="true">text_fields</span></button>
+          <div id="image-tools" class="image-tools" hidden>
+            <button id="add-image" class="panel-action compact-action" title="Choose images"><span class="material-symbols-outlined" aria-hidden="true">image</span></button>
+            <button id="paste-image" class="panel-action compact-action" title="Paste images from the clipboard"><span class="material-symbols-outlined" aria-hidden="true">content_paste</span></button>
+            <button id="clear-image" class="panel-action compact-action" title="Remove selected image" hidden><span class="material-symbols-outlined" aria-hidden="true">delete</span></button>
+          </div>
+          <div id="addition-actions" class="addition-actions" hidden><button id="confirm-add" class="panel-action compact-action confirm-action" title="Add this material"><span class="material-symbols-outlined" aria-hidden="true">check</span></button><button id="cancel-add" class="panel-action compact-action cancel-action" title="Cancel this addition"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+        </div>
+        <div class="transport" role="group" aria-label="Simulation controls">
+          <button id="play-pause" class="icon-button primary-icon" aria-label="Start feeding" title="Start feeding"><span class="material-symbols-outlined" aria-hidden="true">play_arrow</span></button>
+          <button id="replay" class="icon-button" aria-label="Replay" title="Replay" disabled><span class="material-symbols-outlined" aria-hidden="true">replay</span></button>
+          <button id="edit" class="icon-button" aria-label="Edit text" title="Edit text" disabled><span class="material-symbols-outlined" aria-hidden="true">edit</span></button>
+        </div>
       </div>
     </div>
 
@@ -64,6 +64,7 @@
         <div class="field"><label class="check-label" for="autofit"><input id="autofit" type="checkbox" checked><span>Auto fit</span></label><p>Scales the text down when needed to fit the scene.</p></div>
         <div class="field"><label for="resistance">Resistance <small id="resistance-value">35%</small></label><p>Higher resistance makes each bite take longer.</p><input id="resistance" type="range" min="0" max="100" value="35"></div>
         <div class="field"><label for="deform">Deformation <small id="deform-value">2.0%</small></label><p>Controls the text’s subtle movement as it weakens.</p><input id="deform" type="range" min="0" max="5" step="0.1" value="2"></div>
+        <div class="field trail-field"><label for="trails">Ant trails <small id="trail-value">Off</small></label><p>How long ant footsteps linger, up to 10 seconds.</p><input id="trails" type="range" min="0" max="10" step="0.5" value="0" aria-label="Ant trail duration in seconds"></div>
         <div class="panel-actions"><button id="copy-text" class="panel-action"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span>Copy original text</button></div>
         <p class="privacy-note">The interface stays grayscale; text and source images keep their chosen colors. Fonts load from Google Fonts.</p>
       </div>
@@ -72,7 +73,6 @@
       <div class="dialog-head"><div><p class="eyebrow">A LITTLE ABOUT THIS TOOL</p><h2 id="about-title">Natural Decay</h2></div><button id="about-close" class="close icon-button" aria-label="Close about panel" title="Close"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
       <div class="about-content"><p>Turn text or an image collage into a scene ants gradually eat away. Style your type, add and arrange PNG, JPEG, or SVG images, choose a custom ant, tune the colony and its trails, then pause, replay, switch themes, or download a frame.</p><a class="credit-link" href="https://arnavsharnav.framer.website/" target="_blank" rel="noopener noreferrer">made by arnavsharnav <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span></a></div>
     </dialog>
-    <label class="trail-control" title="Show fading ant footsteps"><span>Ant trails <small id="trail-value">Off</small></span><input id="trails" type="range" min="0" max="10" step="0.5" value="0" aria-label="Ant trail duration in seconds"><small>How long footsteps linger (up to 10 seconds)</small></label>
   </main>
   <script type="module" src="./js/main.js"></script>
 </body>
