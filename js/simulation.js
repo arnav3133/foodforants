@@ -258,7 +258,7 @@ export function createSimulation(canvas) {
     await new Promise(resolve => requestAnimationFrame(resolve));
 
     const maxWidth = Math.max(80, width - 90), maxHeight = Math.max(80, height * .58), minSize = 24;
-    let size = config.size, lines, measure;
+    let size = config.size, lines = [], measure;
     let maskW, maskH, maskCanvas, maskCtx;
     if (config.images?.length) {
       maskW=Math.max(1,Math.ceil(width)); maskH=Math.max(1,Math.ceil(height));
@@ -270,19 +270,24 @@ export function createSimulation(canvas) {
         clearFlatEdgeBackground(layerCtx,itemW,itemH);
         maskCtx.drawImage(layerCanvas,item.x*maskW,item.y*maskH,item.w*maskW,item.h*maskH);
       }
-    } else if (config.auto) {
-      for (size = Math.min(config.size, 180); size >= minSize; size -= 2) {
+    }
+
+    if (config.text?.trim()) {
+      if (config.auto) {
+        for (size = Math.min(config.size, 180); size >= minSize; size -= 2) {
+          ({ lines, measure } = wrapLines(config.text, config.font, size, maxWidth, config.tracking || 0));
+          const widest = Math.max(0, ...lines.map(line => trackedWidth(measure,line,size*(config.tracking||0))));
+          if (lines.length * size * 1.15 <= maxHeight && widest <= maxWidth) break;
+        }
+        if (size < minSize) throw new Error('This text cannot fit legibly here. Shorten it or make the window larger.');
+      } else {
         ({ lines, measure } = wrapLines(config.text, config.font, size, maxWidth, config.tracking || 0));
-        const widest = Math.max(0, ...lines.map(line => trackedWidth(measure,line,size*(config.tracking||0))));
-        if (lines.length * size * 1.15 <= maxHeight && widest <= maxWidth) break;
+        if (lines.length * size * 1.15 > maxHeight) throw new Error('This size overflows the scene. Turn on Auto fit or choose a smaller size.');
       }
-      if (size < minSize) throw new Error('This text cannot fit legibly here. Shorten it or make the window larger.');
-    } else {
-      ({ lines, measure } = wrapLines(config.text, config.font, size, maxWidth, config.tracking || 0));
-      if (lines.length * size * 1.15 > maxHeight) throw new Error('This size overflows the scene. Turn on Auto fit or choose a smaller size.');
     }
 
     if (!config.images?.length) {
+      if (!lines.length) throw new Error('Add text or an image before starting.');
       const lineHeight = size * 1.12;
       measure.font = `600 ${size}px ${config.font}`;
       const spacing=size*(config.tracking||0);
@@ -299,6 +304,17 @@ export function createSimulation(canvas) {
         const metrics = maskCtx.measureText(lines[row]);
         const ascent = metrics.actualBoundingBoxAscent || size * .78;
         drawTracked(maskCtx,lines[row],maskW/2,row*lineHeight+ascent+size*.2,spacing);
+      }
+    } else if (lines.length) {
+      const lineHeight = size * 1.12, spacing = size * (config.tracking || 0);
+      maskCtx.fillStyle = config.textColor || '#5b5b5b';
+      maskCtx.font = `600 ${size}px ${config.font}`;
+      maskCtx.textBaseline = 'alphabetic'; maskCtx.textAlign = 'center';
+      const totalHeight = lines.length * lineHeight;
+      for (let row = 0; row < lines.length; row++) {
+        const metrics = maskCtx.measureText(lines[row]);
+        const ascent = metrics.actualBoundingBoxAscent || size * .78;
+        drawTracked(maskCtx, lines[row], maskW/2, maskH/2-totalHeight/2+row*lineHeight+ascent, spacing);
       }
     }
 

@@ -22,14 +22,14 @@
       <label class="theme-toggle" title="Switch between light and dark mode"><span class="material-symbols-outlined" aria-hidden="true">light_mode</span><input id="theme-toggle" type="checkbox" role="switch" aria-label="Dark mode"><span class="material-symbols-outlined" aria-hidden="true">dark_mode</span></label>
       <button id="export" class="tweak-trigger frame-export" title="Download this frame"><span class="material-symbols-outlined" aria-hidden="true">download</span><span>Download frame</span></button>
       <button id="tweak-open" class="tweak-trigger" aria-haspopup="dialog" aria-controls="tweaks"><span class="material-symbols-outlined" aria-hidden="true">tune</span><span>Tweak</span></button>
-      <div id="mode-switch" class="mode-switch" role="group" aria-label="Composition mode">
-        <button id="mode-text" class="mode-option active" type="button" aria-pressed="true">Text</button>
-        <button id="mode-image" class="mode-option" type="button" aria-pressed="false">Images</button>
-      </div>
       <div class="scene-meta"><span id="state-label" aria-live="polite">READY TO FEED</span><span id="remaining"></span></div>
       <div id="hint" class="hint" role="status">Type in the center. Press Enter to begin.</div>
       <div id="edit-hint" class="edit-hint">Enter to feed <i>·</i> Shift + Enter for a new line <i>·</i> Add, drag, or paste images to build a collage</div>
-      <div id="edit-toolbar" class="edit-toolbar" aria-label="Text appearance">
+      <div id="edit-toolbar" class="edit-toolbar" aria-label="Composition tools">
+        <div id="mode-switch" class="mode-switch" role="group" aria-label="Composition mode">
+          <button id="mode-text" class="mode-option active" type="button" aria-pressed="true">Text</button>
+          <button id="mode-image" class="mode-option" type="button" aria-pressed="false">Images</button>
+        </div>
         <details id="type-style" class="type-style">
           <summary><span class="material-symbols-outlined" aria-hidden="true">tune</span><span>Text style</span></summary>
           <div class="type-controls">
@@ -42,7 +42,6 @@
           <button id="add-image" class="panel-action compact-action" title="Choose one or more PNG, JPEG, or SVG images"><span class="material-symbols-outlined" aria-hidden="true">image</span><span>Add images</span></button>
           <button id="paste-image" class="panel-action compact-action" title="Paste images from the clipboard"><span class="material-symbols-outlined" aria-hidden="true">content_paste</span><span>Paste</span></button>
           <button id="clear-image" class="panel-action compact-action" title="Remove the selected image" hidden><span class="material-symbols-outlined" aria-hidden="true">close</span><span>Remove</span></button>
-          <span class="image-mode-hint">Live additions: click outside an image to commit.</span>
         </div>
       </div>
       <div class="transport" role="group" aria-label="Simulation controls">
@@ -64,6 +63,7 @@
         <div class="field"><label class="check-label" for="autofit"><input id="autofit" type="checkbox" checked><span>Auto fit</span></label><p>Scales the text down when needed to fit the scene.</p></div>
         <div class="field"><label for="resistance">Resistance <small id="resistance-value">35%</small></label><p>Higher resistance makes each bite take longer.</p><input id="resistance" type="range" min="0" max="100" value="35"></div>
         <div class="field"><label for="deform">Deformation <small id="deform-value">2.0%</small></label><p>Controls the text’s subtle movement as it weakens.</p><input id="deform" type="range" min="0" max="5" step="0.1" value="2"></div>
+        <div class="field trail-field"><label for="trails">Ant trails <small id="trail-value">Off</small></label><p>How long ant footsteps linger, up to 10 seconds.</p><input id="trails" type="range" min="0" max="10" step="0.5" value="0" aria-label="Ant trail duration in seconds"></div>
         <div class="panel-actions"><button id="copy-text" class="panel-action"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span>Copy original text</button></div>
         <p class="privacy-note">The interface stays grayscale; text and source images keep their chosen colors. Fonts load from Google Fonts.</p>
       </div>
@@ -72,7 +72,6 @@
       <div class="dialog-head"><div><p class="eyebrow">A LITTLE ABOUT THIS TOOL</p><h2 id="about-title">Natural Decay</h2></div><button id="about-close" class="close icon-button" aria-label="Close about panel" title="Close"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
       <div class="about-content"><p>Turn text or an image collage into a scene ants gradually eat away. Style your type, add and arrange PNG, JPEG, or SVG images, choose a custom ant, tune the colony and its trails, then pause, replay, switch themes, or download a frame.</p><a class="credit-link" href="https://arnavsharnav.framer.website/" target="_blank" rel="noopener noreferrer">made by arnavsharnav <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span></a></div>
     </dialog>
-    <label class="trail-control" title="Show fading ant footsteps"><span>Ant trails <small id="trail-value">Off</small></span><input id="trails" type="range" min="0" max="10" step="0.5" value="0" aria-label="Ant trail duration in seconds"><small>How long footsteps linger (up to 10 seconds)</small></label>
   </main>
   <script type="module" src="./js/main.js"></script>
 </body>

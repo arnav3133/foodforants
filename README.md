@@ -17,14 +17,14 @@ Double-clicking opens a `file:///.../index.html` address. This app loads its Jav
 
 ## Use
 
-- Switch between **Text** and **Images** at the top of the scene. Text mode keeps the canvas simple; open **Text style** when you want the font, size, or color controls. Press **Enter** to feed; **Shift+Enter** adds a line. Double-click the scene or use the edit icon to return to editing.
-- In **Images** mode, add one or several PNG, JPEG, or SVG files, drag files from your computer onto the stage, or use **Paste** / Ctrl+V. Drag an image to move it and use a corner handle to resize it; select an image and use Remove to take it out. Press Enter to feed the collage.
-- While feeding, switch to **Images** and drop or add another image. Position or resize it, then click anywhere outside the image to commit it to the running simulation. Existing images keep their current decay. Eating edges have a light feather to soften the bites.
+- Use the compact dock above the play controls to switch between **Text** and **Images**. In Text mode, open **Text style** for the font, size, or color controls. Press **Enter** to feed; **Shift+Enter** adds a line. Double-click the scene or use the edit icon to return to editing.
+- Text and images can share one composition. Add text, switch to **Images** to add one or several PNG, JPEG, or SVG files, then return to Text; the previous material stays in place. Drag files from your computer onto the stage or use **Paste** / Ctrl+V. Drag an image to move it and use a corner handle to resize it; select an image and use Remove to take it out.
+- While feeding, switch modes to add to the same running scene. Enter text and press Enter to add it live. Add or paste an image, position or resize it, then click outside it to commit. Existing material keeps its current decay, and eating edges have a light feather.
 - The interface stays grayscale; text and source images keep their own colors.
 - Use the sun/moon switch at the upper left to change between light and dark mode. Light mode is the default.
 - Choose **Add images** for one or several PNG, JPEG, or SVG files. You can also drag files from your computer onto the stage, or use **Paste** / Ctrl+V for clipboard images. Drag an image to move it and pull any corner handle to resize it; select an image and use Remove to take it out. Text spacing stays matched between the edit preview and feeding scene. Transparent PNGs and SVGs give the cleanest artwork edges. Flat, single-color image borders are trimmed automatically; a JPEG with a detailed background may still be eaten across its whole rectangle.
 - **Tweak** has ant speed, ant chaos, eating frequency, material response, text size, Auto fit, resistance, deformation, and custom ant settings. Ant speed changes walking; ant chaos ranges from direct paths at 0% to broad, bounded turns at 100% while ants keep seeking food; eating frequency changes bite cadence. Ants take a few randomized bites per patch, avoid their recent meal, and select a new target after about three continuous loops.
-- **Ant trails** sits at the bottom left. It starts Off; set it from 0 to 10 seconds to control how long footprints linger.
+- **Ant trails** is in Tweak settings. It starts Off; set it from 0 to 10 seconds to control how long footprints linger.
 - **Download frame** sits beside Tweak on the main screen. It creates a higher-resolution PNG (up to four times the display scale) without the old interface rule.
 
 The text limit is 500 grapheme clusters. Auto fit is on by default. Turn it off to use the selected pixel size; an overflowing composition asks you to reduce the size. Reloading clears the current composition and custom ant selection.
