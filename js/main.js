@@ -7,7 +7,7 @@ const ui = {
   editToolbar:$('edit-toolbar'), editHint:$('edit-hint'), hint:$('hint'), state:$('state-label'), remaining:$('remaining'),
   typeStyle:$('type-style'), imageTools:$('image-tools'), modeText:$('mode-text'), modeImage:$('mode-image'),
   playPause:$('play-pause'), replay:$('replay'), edit:$('edit'), preset:$('preset'),
-  antSpeed:$('ant-speed'), antChaos:$('ant-chaos'), frequency:$('eating-frequency'), resistance:$('resistance'), deform:$('deform'), dialog:$('tweaks'), theme:$('theme-toggle')
+  antSpeed:$('ant-speed'), antCount:$('ant-count'), decaySpeed:$('decay-speed'), antChaos:$('ant-chaos'), frequency:$('eating-frequency'), resistance:$('resistance'), deform:$('deform'), dialog:$('tweaks'), theme:$('theme-toggle')
 };
 const sim = createSimulation(ui.canvas);
 let editMode = true, committing = false;
@@ -59,9 +59,11 @@ function status(message, error = false) {
 function preview() {
   const current = config();
   const pending = images.some(item=>item.pending);
-  const showTextEntry = contentMode === 'text' && editMode;
-  ui.editor.hidden = !showTextEntry;
-  ui.editor.classList.toggle('is-hidden', !showTextEntry);
+  const showText = editMode && (contentMode === 'text' || current.text.trim().length > 0);
+  ui.editor.hidden = !showText;
+  ui.editor.classList.toggle('is-hidden', !showText);
+  ui.editor.readOnly = contentMode !== 'text';
+  ui.editor.classList.toggle('composition-preview', contentMode === 'image' && showText);
   ui.editToolbar.hidden = false;
   ui.editHint.hidden = !editMode || contentMode !== 'text';
   ui.typeStyle.hidden = !editMode || contentMode !== 'text';
@@ -104,7 +106,7 @@ function setMode(mode) {
   preview();
   status(!editMode
     ? (mode === 'image' ? 'Add images, then confirm with ✓ or cancel with ×.' : 'The original text is fixed for this run. Choose Images to add more material.')
-    : (mode === 'image' ? 'Drop or add images. Press Enter to start feeding.' : 'Type in the center. Press Enter to feed.'));
+    : (mode === 'image' ? 'Text stays on top. Add images, then press Enter or Play to start.' : (images.length ? 'Text stays on top of your collage. Press Enter to start.' : 'Type in the center. Press Enter to feed.')));
 }
 ui.modeText.addEventListener('click', () => setMode('text'));
 ui.modeImage.addEventListener('click', () => setMode('image'));
@@ -230,12 +232,14 @@ ui.preset.addEventListener('change', () => {
 });
 function updateLabels() {
   $('ant-chaos-value').textContent = `${ui.antChaos.value}%`;
+  $('ant-count-value').textContent = `${ui.antCount.value} ants`;
+  $('decay-speed-value').textContent = `${Number(ui.decaySpeed.value).toFixed(1)}×`;
   $('ant-speed-value').textContent = `${Number(ui.antSpeed.value).toFixed(1)}×`;
   $('eating-frequency-value').textContent = `${Number(ui.frequency.value).toFixed(1)}×`;
   $('resistance-value').textContent = `${ui.resistance.value}%`;
   $('deform-value').textContent = `${Number(ui.deform.value).toFixed(1)}%`;
 }
-for (const input of [ui.antSpeed, ui.antChaos, ui.frequency, ui.resistance, ui.deform]) {
+for (const input of [ui.antSpeed, ui.antCount, ui.decaySpeed, ui.antChaos, ui.frequency, ui.resistance, ui.deform]) {
   input.addEventListener('input', () => {
     updateLabels();
     if (input === ui.resistance || input === ui.deform) ui.preset.value = 'custom';
@@ -467,6 +471,12 @@ sim.onUpdate(({ state, remaining, total }) => {
   ui.remaining.textContent = total ? `${Math.round(100 * remaining / total)}% MATERIAL` : '';
   if (!editMode && state) ui.state.textContent = state === 'feeding' ? 'ANTS ARE FEEDING' : state.toUpperCase();
 });
-new ResizeObserver(() => { sim.resize(); preview(); }).observe(ui.canvas.parentElement);
+function syncAntCountLimit() {
+  const max = ui.canvas.clientWidth < 700 ? 12 : 24;
+  ui.antCount.max = String(max);
+  if (Number(ui.antCount.value) > max) ui.antCount.value = String(max);
+  updateLabels();
+}
+new ResizeObserver(() => { sim.resize(); syncAntCountLimit(); preview(); }).observe(ui.canvas.parentElement);
 document.addEventListener('visibilitychange', () => document.hidden ? sim.pauseForHidden() : sim.resumeFromHidden());
 updateLabels(); preview(); updatePlayButton();

@@ -19,6 +19,8 @@ export function createSimulation(canvas) {
   antImage.onerror = () => { antSprites = null; render(); };
   antImage.src = './assets/ant-default.svg';
   const antSpeedControl = document.getElementById('ant-speed');
+  const antCountControl = document.getElementById('ant-count');
+  const decaySpeedControl = document.getElementById('decay-speed');
   const antChaosControl = document.getElementById('ant-chaos');
   const eatingFrequencyControl = document.getElementById('eating-frequency');
   const resistanceControl = document.getElementById('resistance');
@@ -60,27 +62,6 @@ export function createSimulation(canvas) {
       sprites[theme] = sprite;
     }
     return { ...sprites, width: targetWidth + 3, height: targetHeight + 3 };
-  }
-
-  function clearFlatEdgeBackground(context,w,h) {
-    if (w<4 || h<4) return;
-    const image=context.getImageData(0,0,w,h), pixels=image.data;
-    let r=0,g=0,b=0,count=0;
-    for (let x=0;x<w;x++) for (const y of [0,h-1]) { const i=(y*w+x)*4; if(pixels[i+3]>220){r+=pixels[i];g+=pixels[i+1];b+=pixels[i+2];count++;} }
-    for (let y=1;y<h-1;y++) for (const x of [0,w-1]) { const i=(y*w+x)*4; if(pixels[i+3]>220){r+=pixels[i];g+=pixels[i+1];b+=pixels[i+2];count++;} }
-    const perimeter = 2*w + 2*h - 4;
-    if(count < Math.max(24, perimeter * .12)) return;
-    r/=count;g/=count;b/=count;
-    let variance=0;
-    for (let x=0;x<w;x+=Math.max(1,Math.floor(w/80))) for (const y of [0,h-1]) { const i=(y*w+x)*4;if(pixels[i+3]>220)variance+=Math.hypot(pixels[i]-r,pixels[i+1]-g,pixels[i+2]-b); }
-    for (let y=0;y<h;y+=Math.max(1,Math.floor(h/80))) for (const x of [0,w-1]) { const i=(y*w+x)*4;if(pixels[i+3]>220)variance+=Math.hypot(pixels[i]-r,pixels[i+1]-g,pixels[i+2]-b); }
-    if(variance/320>26) return;
-    const limit=42,total=w*h,queue=new Int32Array(total);let head=0,tail=0;
-    const add=index=>{const i=index*4;if(pixels[i+3]<220)return;if(Math.hypot(pixels[i]-r,pixels[i+1]-g,pixels[i+2]-b)>limit)return;pixels[i+3]=0;queue[tail++]=index;};
-    for(let x=0;x<w;x++){add(x);add((h-1)*w+x);}
-    for(let y=1;y<h-1;y++){add(y*w);add(y*w+w-1);}
-    while(head<tail){const n=queue[head++],x=n%w,y=(n/w)|0;if(x>0)add(n-1);if(x+1<w)add(n+1);if(y>0)add(n-w);if(y+1<h)add(n+w);}
-    context.putImageData(image,0,0);
   }
 
   function emit() { onUpdate({ state, remaining, total }); }
@@ -213,8 +194,8 @@ export function createSimulation(canvas) {
       load: 0, phase: rand(0, 6), warpPhase: rand(0, Math.PI * 2), wanderAngle: 0, wanderClock: rand(0, .6),
       legPhases: Array.from({ length: 6 }, () => rand(0, Math.PI * 2)),
       legRates: Array.from({ length: 6 }, () => rand(.82, 1.2)),
-      turnDirection: 0, turnRun: 0, lastFood: null, patchBites: 0,
-      feed: 0, exit: null, variation: rand(.8, 1.2), biteClock: rand(0, .16) };
+      turnDirection: 0, turnRun: 0, lastFood: null, patchBites: 0, bestDistance: Infinity, stuckClock: 0,
+      feed: 0, exit: null, variation: rand(.8, 1.2), biteClock: rand(0, .16), retiring:false };
     enterFromOutside(ant);
     ants.push(ant);
   }
@@ -300,7 +281,6 @@ export function createSimulation(canvas) {
         const itemW=Math.max(1,Math.ceil(item.w*maskW)),itemH=Math.max(1,Math.ceil(item.h*maskH));
         const layerCanvas=makeCanvas(itemW,itemH),layerCtx=layerCanvas.getContext('2d',{willReadFrequently:true});
         layerCtx.drawImage(item.image,0,0,itemW,itemH);
-        clearFlatEdgeBackground(layerCtx,itemW,itemH);
         maskCtx.drawImage(layerCanvas,item.x*maskW,item.y*maskH,item.w*maskW,item.h*maskH);
       }
     }
@@ -378,8 +358,7 @@ export function createSimulation(canvas) {
     ants = []; crumbs = []; trails = []; trailClock = 0; bites = 0;
     rebuildBoundary();
     age = 0; lastBoundaryCompact = 0; paused = false; state = 'feeding';
-    const mobile = width < 700;
-    const colonySize = Math.min(mobile ? 8 : 20, Math.max(mobile ? 5 : 12, Math.round(total / 900)));
+    const colonySize = Math.max(2, Math.round(Number(antCountControl.value) || 12));
     for (let i = 0; i < colonySize; i++) spawnAnt();
     if (!raf) { lastTime = performance.now(); raf = requestAnimationFrame(frame); }
     emit();
@@ -418,7 +397,6 @@ export function createSimulation(canvas) {
       const iw = Math.max(1, Math.ceil(w)), ih = Math.max(1, Math.ceil(h));
       const layer = makeCanvas(iw, ih), layerCtx = layer.getContext('2d', { willReadFrequently:true });
       layerCtx.drawImage(item.image, 0, 0, iw, ih);
-      clearFlatEdgeBackground(layerCtx, iw, ih);
       mask.ctx.drawImage(layer, x, y, w, h);
       if (item.kind === 'live-text') {
         textLayers.push({ canvas:item.image, ctx:item.image.getContext('2d'), x, y, w, h,
@@ -466,10 +444,11 @@ export function createSimulation(canvas) {
     }
     const centerX = Math.floor((ant.target.x-mask.x)*mask.sx), centerY = Math.floor((ant.target.y-mask.y)*mask.sy);
     const preset = material[cycleConfig.preset] || material.soft;
+    const biteRadius = Math.max(1, Math.round(preset.radius * Math.sqrt(Number(decaySpeedControl.value) || 1)));
     const points = [];
-    for (let dy = -preset.radius; dy <= preset.radius; dy++) {
-      for (let dx = -preset.radius; dx <= preset.radius; dx++) {
-        if (dx * dx + dy * dy > preset.radius * preset.radius + .25) continue;
+    for (let dy = -biteRadius; dy <= biteRadius; dy++) {
+      for (let dx = -biteRadius; dx <= biteRadius; dx++) {
+        if (dx * dx + dy * dy > biteRadius * biteRadius + .25) continue;
         const x = centerX + dx, y = centerY + dy;
         if (x < 0 || y < 0 || x >= mask.w || y >= mask.h) continue;
         const index = y * mask.w + x;
@@ -484,7 +463,7 @@ export function createSimulation(canvas) {
       mask.data[index] = 0;
       removed++;
     }
-    const feather = preset.radius + 1.45;
+    const feather = biteRadius + 1.45;
     const edge = mask.ctx.createRadialGradient(centerX + .5, centerY + .5, 0, centerX + .5, centerY + .5, feather);
     edge.addColorStop(0, 'rgba(0,0,0,1)');
     edge.addColorStop(.78, 'rgba(0,0,0,1)');
@@ -562,13 +541,20 @@ export function createSimulation(canvas) {
       if (turnDirection === ant.turnDirection) ant.turnRun += Math.abs(headingChange);
       else { ant.turnDirection = turnDirection; ant.turnRun = Math.abs(headingChange); }
     }
-    // Keep a few natural turns, then break a persistent 3-loop orbit for this ant.
-    if (ant.turnRun >= Math.PI * 6) {
+    // Break a full orbit early, and reroute ants that stop closing distance to a target.
+    const targetDistance = Math.hypot(target.x - ant.x, target.y - ant.y);
+    if (targetDistance < ant.bestDistance - 1) { ant.bestDistance = targetDistance; ant.stuckClock = 0; }
+    else ant.stuckClock += dt;
+    if (ant.turnRun >= Math.PI * 2 || ant.stuckClock > 2.6) {
       ant.turnRun = 0; ant.turnDirection = 0; ant.wanderAngle = 0; ant.wanderClock = rand(.4, .8);
       if (ant.state === 'seeking') {
-        ant.lastFood = { x: ant.x, y: ant.y, until: age + 15 };
+        ant.lastFood = { x: ant.x, y: ant.y, until: age + 12 };
         ant.target = chooseTarget(ant.lastFood);
-      } else ant.exit = exitPoint(ant);
+      } else {
+        const [minY, maxY] = antTravelBand();
+        ant.exit = { x: ant.x < width / 2 ? width + 25 : -25, y: clamp(ant.y, minY, maxY) };
+      }
+      ant.bestDistance = Infinity; ant.stuckClock = 0;
     }
     const pace = Number(antSpeedControl.value);
     ant.x += Math.cos(ant.angle) * ant.speed * ant.variation * pace * dt;
@@ -577,8 +563,16 @@ export function createSimulation(canvas) {
 
   function updateAnts(dt) {
     const bitesBefore = bites;
-    const antLimit = width < 700 ? 8 : 24;
-    if (state === 'feeding' && ants.length < antLimit && Math.random() < dt * .7) spawnAnt();
+    const antLimit = Math.max(2, Math.round(Number(antCountControl.value) || 12));
+    if (state === 'feeding' && ants.length > antLimit) {
+      let excess = ants.length - antLimit;
+      for (let index = ants.length - 1; index >= 0 && excess > 0; index--) {
+        const ant = ants[index];
+        if (ant.retiring) continue;
+        ant.retiring = true; ant.state = 'exiting'; ant.target = null; ant.load = 0; ant.exit = exitPoint(ant); excess--;
+      }
+    }
+    if (state === 'feeding' && ants.length < antLimit && Math.random() < dt * 2.5) spawnAnt();
     const frequency = Number(eatingFrequencyControl.value);
     const resistance = Number(resistanceControl.value) / 100;
     const preset = material[cycleConfig.preset] || material.soft;
@@ -588,6 +582,7 @@ export function createSimulation(canvas) {
       if (ant.state === 'seeking') {
         if (!ant.target || !occupied(ant.target.x, ant.target.y)) {
           ant.target = chooseTarget(ant.lastFood);
+          ant.bestDistance = Infinity; ant.stuckClock = 0;
         }
         if (!ant.target) { ant.state = ant.load ? 'carrying' : 'exiting'; ant.exit = exitPoint(ant); }
         else if (Math.hypot(ant.target.x - ant.x, ant.target.y - ant.y) < 4) { ant.state = 'feeding'; ant.feed = 0; ant.patchBites = 0; ant.turnRun = 0; ant.turnDirection = 0; }
@@ -595,8 +590,9 @@ export function createSimulation(canvas) {
       } else if (ant.state === 'feeding') {
         if (!ant.target || !occupied(ant.target.x, ant.target.y)) {
           ant.target = chooseTarget(ant.lastFood);
+          ant.bestDistance = Infinity; ant.stuckClock = 0;
           ant.state = ant.target ? 'seeking' : (ant.load ? 'carrying' : 'exiting');
-          if (!ant.target) ant.exit = exitPoint(ant);
+          if (!ant.target) { ant.exit = exitPoint(ant); ant.bestDistance = Infinity; ant.stuckClock = 0; }
         } else {
           ant.x += (ant.target.x - ant.x) * Math.min(1, dt * 7);
           ant.y += (ant.target.y - ant.y) * Math.min(1, dt * 7);
