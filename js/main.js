@@ -5,7 +5,7 @@ const ui = {
   canvas:$('scene'), editor:$('copy'), fontOptions:$('font-options'), color:$('text-color'), size:$('size'), autofit:$('autofit'),
   imageLayer:$('image-layer'), drawingLayer:$('drawing-layer'), imageFile:$('image-file'), editSize:$('edit-size'), trails:$('trails'),
   editToolbar:$('edit-toolbar'), editHint:$('edit-hint'), hint:$('hint'), state:$('state-label'), remaining:$('remaining'),
-  typeStyle:$('type-style'), imageTools:$('image-tools'), imageHuePanel:$('image-hue-panel'), drawSettings:$('draw-settings'), addTextLayer:$('add-text-layer'), undoDrawing:$('undo-drawing'), minimizeUI:$('minimize-ui'), modeText:$('mode-text'), modeImage:$('mode-image'), modeDraw:$('mode-draw'),
+  typeStyle:$('type-style'), imageTools:$('image-tools'), imageHuePanel:$('image-hue-panel'), drawSettings:$('draw-settings'), addTextLayer:$('add-text-layer'), undoDrawing:$('undo-drawing'), minimizeUI:$('minimize-ui'), restoreUI:$('restore-ui'), modeText:$('mode-text'), modeImage:$('mode-image'), modeDraw:$('mode-draw'),
   playPause:$('play-pause'), replay:$('replay'), edit:$('edit'), preset:$('preset'),
   antSpeed:$('ant-speed'), antCount:$('ant-count'), decaySpeed:$('decay-speed'), antChaos:$('ant-chaos'), frequency:$('eating-frequency'), resistance:$('resistance'), deform:$('deform'), dialog:$('tweaks'), theme:$('theme-toggle')
 };
@@ -26,8 +26,27 @@ const fonts = {
   'plex-mono':'"IBM Plex Mono", monospace'
 };
 const stylePopovers = [...document.querySelectorAll('.style-popover')];
+const toolbarControls = document.querySelector('.toolbar-controls');
 function closeStylePopovers(except = null) {
   for (const popover of stylePopovers) if (popover !== except) popover.open = false;
+}
+function placeStylePopover(popover) {
+  if (!popover?.open) return;
+  const panel = popover.querySelector(':scope > div');
+  const summary = popover.querySelector(':scope > summary');
+  if (!panel || !summary) return;
+  const anchor = popover.getBoundingClientRect();
+  const trigger = summary.getBoundingClientRect();
+  const box = panel.getBoundingClientRect();
+  const margin = 10;
+  const left = Math.max(margin, Math.min(trigger.left, window.innerWidth - box.width - margin));
+  const above = trigger.top - box.height - 8;
+  const below = trigger.bottom + 8;
+  const top = above >= margin ? above : Math.min(below, window.innerHeight - box.height - margin);
+  panel.style.left = `${left - anchor.left}px`;
+  panel.style.right = 'auto';
+  panel.style.top = `${Math.max(margin, top) - anchor.top}px`;
+  panel.style.bottom = 'auto';
 }
 for (const popover of stylePopovers) {
   popover.addEventListener('toggle', () => {
@@ -35,9 +54,13 @@ for (const popover of stylePopovers) {
       closeStylePopovers(popover);
       $('tweaks').close();
       $('about').close();
+      requestAnimationFrame(() => placeStylePopover(popover));
     }
   });
 }
+window.addEventListener('resize', () => {
+  for (const popover of stylePopovers) if (popover.open) placeStylePopover(popover);
+}, { passive:true });
 document.addEventListener('click', event => {
   if (!event.target.closest('.style-popover')) closeStylePopovers();
 });
@@ -134,6 +157,10 @@ function preview() {
   ui.editor.readOnly = contentMode !== 'text';
   ui.editor.classList.toggle('composition-preview', contentMode !== 'text' && showText);
   ui.editToolbar.hidden = false;
+  const modeTools = toolbarControls.querySelector('.toolbar-actions');
+  modeTools.hidden = false;
+  modeTools.style.display = 'flex';
+  ui.minimizeUI.hidden = false;
   ui.editHint.hidden = !editMode || contentMode === 'image';
   ui.typeStyle.hidden = contentMode !== 'text';
   ui.imageTools.hidden = contentMode !== 'image';
@@ -150,8 +177,8 @@ function preview() {
   if (!ui.drawingLayer.hidden) renderDrawing();
   ui.modeDraw.disabled = false;
   document.querySelector('.stage-wrap').classList.toggle('is-drawing',contentMode==='draw');
-  document.querySelector('.toolbar-top').classList.toggle('image-mode', contentMode === 'image');
-  document.querySelector('.toolbar-top').classList.toggle('draw-mode', contentMode === 'draw');
+  toolbarControls.classList.toggle('image-mode', contentMode === 'image');
+  toolbarControls.classList.toggle('draw-mode', contentMode === 'draw');
   ui.modeText.classList.toggle('active', contentMode === 'text');
   ui.modeImage.classList.toggle('active', contentMode === 'image');
   ui.modeDraw.classList.toggle('active', contentMode === 'draw');
@@ -165,20 +192,54 @@ function preview() {
   $('clear-image').hidden = !selectedImageId;
   renderImageLayers();
   ui.editor.style.fontFamily = current.font;
-  const maxHeight = ui.canvas.clientHeight * .68;
-  let previewSize = current.auto ? Math.min(current.size, Math.max(34, Math.min(ui.canvas.clientWidth * .13, ui.canvas.clientHeight * .24))) : current.size;
+  const maxWidth = Math.max(80, ui.canvas.clientWidth - 90);
+  const maxHeight = Math.max(80, ui.canvas.clientHeight * .58);
+  const minSize = 24;
+  const measure = document.createElement('canvas').getContext('2d');
+  const measureWidth = (text, size) => {
+    measure.font = `600 ${size}px ${current.font}`;
+    const units = [...new Intl.Segmenter(undefined, {granularity:'grapheme'}).segment(text)].map(part=>part.segment);
+    if ('letterSpacing' in measure) { measure.letterSpacing = `${size * current.tracking}px`; return measure.measureText(text).width; }
+    return units.reduce((sum, unit)=>sum+measure.measureText(unit).width,0)+Math.max(0,units.length-1)*size*current.tracking;
+  };
+  const wrapPreview = size => {
+    const lines=[];
+    for (const sourceLine of current.text.split('\n')) {
+      let line='';
+      for (const word of sourceLine.split(/\s+/)) {
+        const candidate=line?`${line} ${word}`:word;
+        if (measureWidth(candidate,size)<=maxWidth) { line=candidate; continue; }
+        if (line) lines.push(line);
+        if (measureWidth(word,size)<=maxWidth) { line=word; continue; }
+        line='';
+        for (const {segment} of new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(word)) {
+          if (line&&measureWidth(line+segment,size)>maxWidth) { lines.push(line); line=segment; }
+          else line+=segment;
+        }
+      }
+      lines.push(line);
+    }
+    return lines;
+  };
+  let previewSize = current.size, previewLines = wrapPreview(previewSize);
+  if (current.auto) {
+    for (; previewSize>=minSize; previewSize-=2) {
+      previewLines=wrapPreview(previewSize);
+      const widest=Math.max(0,...previewLines.map(line=>measureWidth(line,previewSize)));
+      if (previewLines.length*previewSize*1.15<=maxHeight&&widest<=maxWidth) break;
+    }
+    previewSize=Math.max(minSize,previewSize);
+    previewLines=wrapPreview(previewSize);
+  }
+  ui.editor.style.width = `${maxWidth}px`;
+  ui.editor.style.maxWidth = 'calc(100vw - 24px)';
+  ui.editor.style.maxHeight = `${maxHeight}px`;
+  ui.editor.style.letterSpacing = `${current.tracking}em`;
+  ui.editor.style.lineHeight = '1.12';
   ui.editor.style.fontSize = `${previewSize}px`;
   ui.editor.style.fontWeight = current.weight;
   ui.editor.style.color = current.textColor;
-  ui.editor.style.height = 'auto';
-  if (current.auto) {
-    while (ui.editor.scrollHeight > maxHeight && previewSize > 34) {
-      previewSize = Math.max(34, previewSize - 2);
-      ui.editor.style.fontSize = `${previewSize}px`;
-      ui.editor.style.height = 'auto';
-    }
-  }
-  ui.editor.style.height = `${Math.min(ui.editor.scrollHeight, maxHeight)}px`;
+  ui.editor.style.height = `${Math.min(Math.max(previewSize*1.12,previewLines.length*previewSize*1.12),maxHeight)}px`;
   $('size-value').textContent = `${current.size} px`;
   $('edit-size-value').textContent = `${current.size} px`;
   ui.editSize.value = String(current.size);
@@ -247,6 +308,8 @@ async function startFeeding() {
     status(current.images.length && current.text.trim() ? 'Preparing text and images…' : current.images.length ? 'Preparing the collage…' : 'Preparing the text…');
   try {
     await document.fonts.ready;
+    // Re-measure after the selected web font has settled, so the preview and first simulation frame match.
+    preview();
     await sim.start(current);
     if(drawingStrokes.length){const saved=copyDrawingCanvas();images.push({id:`drawing-${++imageSequence}`,name:'Chalk drawing',image:saved,url:saved.toDataURL('image/png'),x:0,y:0,w:1,h:1,pending:false});drawingStrokes=[];renderDrawing();}
     editMode = false;
@@ -336,17 +399,22 @@ ui.edit.addEventListener('click', setEditing);
 const appShell=$('app');
 function setInterfaceHidden(hidden){
   appShell.classList.toggle('ui-minimized',hidden);
+  ui.editToolbar.hidden = false;
+  ui.minimizeUI.hidden = false;
+  ui.restoreUI.hidden = !hidden;
+  ui.minimizeUI.style.display = hidden ? 'none' : '';
   const icon=ui.minimizeUI.querySelector('.material-symbols-outlined');
-  icon.textContent=hidden?'fullscreen_exit':'fullscreen';
-  ui.minimizeUI.setAttribute('aria-label',hidden?'Show interface':'Hide interface');
-  ui.minimizeUI.title=hidden?'Show interface':'Hide interface';
+  icon.textContent='fullscreen';
+  ui.minimizeUI.setAttribute('aria-label','Hide interface');
+  ui.minimizeUI.title='Hide interface';
 }
 ui.minimizeUI.addEventListener('click',()=>{
   const hide=!appShell.classList.contains('ui-minimized');
   if(hide){closeStylePopovers();$('tweaks').close();$('about').close();}
   setInterfaceHidden(hide);
-  ui.minimizeUI.focus();
+  (hide ? ui.restoreUI : ui.minimizeUI).focus();
 });
+ui.restoreUI.addEventListener('click',()=>{setInterfaceHidden(false);ui.minimizeUI.focus();});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&appShell.classList.contains('ui-minimized')){setInterfaceHidden(false);ui.minimizeUI.focus();}});
 
 $('tweak-open').addEventListener('click', () => {
@@ -652,5 +720,6 @@ function syncAntCountLimit() {
 }
 new ResizeObserver(() => { sim.resize(); resizeDrawingLayer(); syncAntCountLimit(); preview(); }).observe(ui.canvas.parentElement);
 document.addEventListener('visibilitychange', () => document.hidden ? sim.pauseForHidden() : sim.resumeFromHidden());
+sim.resize();
 resizeDrawingLayer();
 updateLabels(); preview(); updatePlayButton();
