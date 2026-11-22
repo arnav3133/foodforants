@@ -1,20 +1,118 @@
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const rand = (min, max) => min + Math.random() * (max - min);
 
+const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, {granularity:'grapheme'}) : null;
+export function textUnits(text) {
+  return segmenter ? Array.from(segmenter.segment(text), part => part.segment) : Array.from(text);
+}
+
+function trackedWidth(context,text,spacing) {
+  if ('letterSpacing' in context) { context.letterSpacing=`${spacing}px`; return context.measureText(text).width; }
+  const units=textUnits(text);
+  return units.reduce((sum,unit)=>sum+context.measureText(unit).width,0)+Math.max(0,units.length-1)*spacing;
+}
+
+function drawTracked(context,text,centerX,y,spacing) {
+  if ('letterSpacing' in context) { context.letterSpacing=`${spacing}px`; context.textAlign='center'; context.fillText(text,centerX,y); return; }
+  const units=textUnits(text), total=trackedWidth(context,text,spacing);
+  let x=centerX-total/2; context.textAlign='left';
+  for (const unit of units) { context.fillText(unit,x,y); x+=context.measureText(unit).width+spacing; }
+}
+
+function wrapLines(measure, text, font, size, maxWidth, tracking) {
+  measure.font = `600 ${size}px ${font}`;
+  const spacing=size*tracking;
+  const lines = [];
+  for (const sourceLine of text.split('\n')) {
+    let line = '';
+    for (const word of sourceLine.match(/\s+|[^\s]+/gu) || []) {
+      if (trackedWidth(measure, line + word, spacing) <= maxWidth) {
+        line += word;
+        continue;
+      }
+      if (line.trimEnd()) lines.push(line.trimEnd());
+      line = '';
+      if (!word.trim()) continue;
+      if (trackedWidth(measure, word, spacing) <= maxWidth) {
+        line = word;
+        continue;
+      }
+      for (const unit of textUnits(word)) {
+        if (line && trackedWidth(measure, line + unit, spacing) > maxWidth) {
+          lines.push(line);
+          line = '';
+        }
+        line += unit;
+      }
+    }
+    if (line || !sourceLine || !sourceLine.trim()) lines.push(line);
+  }
+  return lines;
+}
+
+let textMeasure;
+export function layoutText(config, width, height, bounds) {
+  textMeasure ??= document.createElement('canvas').getContext('2d');
+  const maxWidth = bounds?.width ?? Math.max(1, Math.min(width - 24, width * .88));
+  const maxHeight = bounds?.height ?? Math.max(1, Math.min(height * .54, height - 205));
+  const tracking = config.tracking ?? -.055;
+  const preferred = Math.max(2, Number(config.size) || 88);
+  const measureAt = size => {
+    const lines = wrapLines(textMeasure, config.text, config.font, size, maxWidth, tracking);
+    const lineHeight = size * 1.12;
+    const widest = Math.max(0, ...lines.map(line => trackedWidth(textMeasure, line, size * tracking)));
+    return { size, lines, lineHeight, height:lines.length * lineHeight, widest };
+  };
+  const fits = item => item.height <= maxHeight && item.widest <= maxWidth;
+  let layout = measureAt(preferred);
+  if (!fits(layout)) {
+    let low = 2, high = Math.floor(preferred);
+    layout = measureAt(low);
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2), candidate = measureAt(mid);
+      if (fits(candidate)) {
+        layout = candidate;
+        low = mid + 1;
+      } else high = mid - 1;
+    }
+  }
+  return { ...layout, maxWidth, maxHeight, tracking, preferred };
+}
+
+export function paintText(ctx, config, layout, x, y) {
+  ctx.fillStyle = config.textColor || '#5b5b5b';
+  ctx.font = `600 ${layout.size}px ${config.font}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  const metrics = ctx.measureText('Mg');
+  const ascent = metrics.fontBoundingBoxAscent ?? layout.size * .8;
+  const descent = metrics.fontBoundingBoxDescent ?? layout.size * .2;
+  const first = y - layout.height / 2 + (layout.lineHeight + ascent - descent) / 2;
+  layout.lines.forEach((line, index) =>
+    drawTracked(ctx, line, x, first + index * layout.lineHeight, layout.size * layout.tracking));
+}
+
 export function createSimulation(canvas) {
-  const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) || canvas.getContext('2d');
+  let ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) || canvas.getContext('2d');
   ctx.imageSmoothingEnabled = true;
   if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
   let width = 1, height = 1, dpr = 1;
-  let raf = 0, lastTime = 0, lastRenderTime = 0, accumulator = 0, lastProgressEmit = 0;
+  let raf = 0, lastTime = 0, accumulator = 0, lastProgressEmit = 0;
   let paused = false, hiddenPause = false, wasPaused = false;
   let state = 'editing', age = 0, body = null, mask = null, silhouetteCanvas = null, silhouetteCtx = null, silhouetteScale = 1;
   let ants = [], crumbs = [], trails = [], boundary = [], boundaryFlags = null, textLayers = [];
+  let hasRaster = false;
+  let biteHistory = null;
+  let stainDuration = Infinity;
+  let timedStain = null;
+  let stainTime = 0;
+  let elapsed = 0;
+  let emittedSecond = 0;
   let total = 0, remaining = 0, source = '', cycleConfig = null, bites = 0;
   let biteTokens = 0;
   const biteBrushes = new Map();
   let onUpdate = () => {};
-  let trailClock = 0, customAntUrl = null, antSprites = null, lastBoundaryCompact = 0;
+  let trailDotCount = 0, customAntUrl = null, antSprites = null, lastBoundaryCompact = 0;
   let darkMode = false;
   let antImage = new Image();
   antImage.onload = () => { antSprites = makeAntSprites(antImage); render(); };
@@ -56,6 +154,69 @@ export function createSimulation(canvas) {
     silhouetteCtx.drawImage(layer,x*silhouetteScale,y*silhouetteScale,w*silhouetteScale,h*silhouetteScale);
   }
 
+  function recordStain(points) {
+    if (!timedStain) {
+      // Keep one small texture for recent bites, independent of display and export resolution.
+      const scale = Math.min(1, 512 / Math.max(mask.w, mask.h));
+      const w = Math.ceil(mask.w * scale), h = Math.ceil(mask.h * scale);
+      const context = makeCanvas(w, h).getContext('2d');
+      timedStain = {
+        context, w, sx:w / mask.w, sy:h / mask.h,
+        stamps:new Float32Array(w * h), coverage:new Uint16Array(w * h),
+        pixels:context.createImageData(w, h), latest:0, paintedAt:-Infinity, paintedDuration:0
+      };
+    }
+    const stain = timedStain;
+    const stamp = Math.max(stainTime, .001);
+    for (const index of points) {
+      const x = Math.floor((index % mask.w) * stain.sx);
+      const y = Math.floor(Math.floor(index / mask.w) * stain.sy);
+      const pixel = y * stain.w + x;
+      if (stain.stamps[pixel] && stamp - stain.stamps[pixel] >= 120) stain.coverage[pixel] = 0;
+      stain.coverage[pixel] = Math.min(65535, stain.coverage[pixel] + 1);
+      stain.stamps[pixel] = stamp;
+    }
+    stain.latest = stamp;
+  }
+
+  function timedStainIsVisible() {
+    return timedStain && Number.isFinite(stainDuration) && stainDuration > 0 && stainTime - timedStain.latest < stainDuration;
+  }
+
+  function stainCanvas() {
+    if (stainDuration === Infinity) return silhouetteCanvas;
+    if (!timedStainIsVisible()) return null;
+    const stain = timedStain;
+    if (stain.paintedDuration !== stainDuration || stainTime - stain.paintedAt >= .08) {
+      const { data } = stain.pixels;
+      for (let i = 0; i < stain.stamps.length; i++) {
+        const offset = i * 4;
+        const opacity = stain.stamps[i] ? clamp(1 - (stainTime - stain.stamps[i]) / stainDuration, 0, 1) : 0;
+        const coverage = Math.min(1, stain.coverage[i] * stain.sx * stain.sy);
+        data[offset] = data[offset + 1] = data[offset + 2] = 119;
+        data[offset + 3] = Math.round(255 * opacity * coverage);
+      }
+      stain.context.putImageData(stain.pixels, 0, 0);
+      stain.paintedAt = stainTime;
+      stain.paintedDuration = stainDuration;
+    }
+    return stain.context.canvas;
+  }
+
+  function setStainDuration(seconds) {
+    const now = performance.now();
+    if (!paused && !raf && state === 'finished') {
+      stainTime += Math.max(0, (now - lastTime) / 1000);
+      lastTime = now;
+    }
+    stainDuration = seconds;
+    render();
+    if (!paused && !raf && timedStainIsVisible()) {
+      lastTime = now;
+      raf = requestAnimationFrame(frame);
+    }
+  }
+
   // Ant artwork is normalized once at upload time; drawAnt only blits a tiny cached sprite.
   function makeAntSprites(image) {
     const sourceWidth = image?.naturalWidth || image?.width || 0;
@@ -79,7 +240,10 @@ export function createSimulation(canvas) {
     return { ...sprites, width: targetWidth + 3, height: targetHeight + 3 };
   }
 
-  function emit() { onUpdate({ state, remaining, total }); }
+  function emit() {
+    emittedSecond = Math.floor(elapsed);
+    onUpdate({ state, remaining, total, elapsed:emittedSecond });
+  }
 
   function emitProgress() {
     const now=performance.now();
@@ -106,7 +270,7 @@ export function createSimulation(canvas) {
   }
 
   function targetBitesPerSecond() {
-    const maxAnts=48;
+    const maxAnts=Number(antCountControl.max);
     const colony=clamp((Number(antCountControl.value)-2)/(maxAnts-2),0,1);
     const walking=clamp((Number(antSpeedControl.value)-.4)/(5-.4),0,1);
     const eating=clamp((Number(eatingFrequencyControl.value)-.25)/(10-.25),0,1);
@@ -122,19 +286,20 @@ export function createSimulation(canvas) {
   function resize() {
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
-    const scaleX = width / rect.width, scaleY = height / rect.height;
+    const nextDpr = Math.min(window.devicePixelRatio || 1, rect.width < 700 ? 1.25 : 2);
+    if (width === rect.width && height === rect.height && dpr === nextDpr) return;
+    const scaleX = rect.width / width, scaleY = rect.height / height;
     width = rect.width;
     height = rect.height;
     // Text is drawn separately at high resolution; the moving scene can use a lighter canvas on phones.
     // A small mobile resolution bump sharpens ant edges without paying for full device DPR.
-    dpr = Math.min(window.devicePixelRatio || 1, width < 700 ? 1.25 : 2);
+    dpr = nextDpr;
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (mask && body) {
       if (body.scene) {
-        const scale=Math.min(width/mask.w,height/mask.h);
-        body.w=mask.w*scale; body.h=mask.h*scale;
+        body.w = width; body.h = height;
       }
       body.x = (width - body.w) / 2;
       body.y = (height - body.h) / 2;
@@ -228,6 +393,7 @@ export function createSimulation(canvas) {
   }
 
   function enterFromOutside(ant) {
+    ant.trailX = ant.trailY = null;
     const [minY, maxY] = antTravelBand();
     const fromRight = Math.random() < .5;
     ant.x = fromRight ? width + 18 : -18;
@@ -253,67 +419,22 @@ export function createSimulation(canvas) {
     ants.push(ant);
   }
 
-  function textUnits(text) {
-    return [...new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text)].map(part=>part.segment);
-  }
-
-  function trackedWidth(context,text,spacing) {
-    if ('letterSpacing' in context) { context.letterSpacing=`${spacing}px`; return context.measureText(text).width; }
-    const units=textUnits(text);
-    return units.reduce((sum,unit)=>sum+context.measureText(unit).width,0)+Math.max(0,units.length-1)*spacing;
-  }
-
-  function drawTracked(context,text,centerX,y,spacing) {
-    if ('letterSpacing' in context) { context.letterSpacing=`${spacing}px`; context.textAlign='center'; context.fillText(text,centerX,y); return; }
-    const units=textUnits(text), total=trackedWidth(context,text,spacing);
-    let x=centerX-total/2; context.textAlign='left';
-    for (const unit of units) { context.fillText(unit,x,y); x+=context.measureText(unit).width+spacing; }
-  }
-
-  function wrapLines(text, font, size, maxWidth, tracking) {
-    const measure = document.createElement('canvas').getContext('2d');
-    measure.font = `600 ${size}px ${font}`;
-    const spacing=size*tracking;
-    const lines = [];
-    for (const sourceLine of text.split('\n')) {
-      let line = '';
-      for (const word of sourceLine.split(/\s+/)) {
-        const candidate = line ? `${line} ${word}` : word;
-        if (trackedWidth(measure,candidate,spacing) <= maxWidth) { line = candidate; continue; }
-        if (line) lines.push(line);
-        if (trackedWidth(measure,word,spacing) <= maxWidth) { line = word; continue; }
-        line = '';
-        for (const grapheme of textUnits(word)) {
-          if (line && trackedWidth(measure,line+grapheme,spacing) > maxWidth) { lines.push(line); line = grapheme; }
-          else line += grapheme;
-        }
-      }
-      lines.push(line);
-    }
-    return { lines, measure };
-  }
-
-  function makeTextLayer(config, lines, size, maskW, maskH) {
-    if (!lines.length) return null;
-    const lineHeight = size * 1.12, spacing = size * (config.tracking || 0);
+  function makeTextLayer(config, layout, sceneW, sceneH) {
     const scale = Math.min(Math.max(window.devicePixelRatio || 1, 2), 3);
-    const canvasLayer = makeCanvas(Math.ceil(maskW * scale), Math.ceil(maskH * scale));
-    const layerCtx = canvasLayer.getContext('2d'); layerCtx.scale(scale, scale);
-    layerCtx.fillStyle = config.textColor || '#5b5b5b';
-    layerCtx.font = `600 ${size}px ${config.font}`;
-    layerCtx.textBaseline = 'alphabetic'; layerCtx.textAlign = 'center';
-    const x = config.images?.length ? 0 : 0;
-    const y = config.images?.length ? 0 : 0;
-    const startY = config.images?.length ? maskH / 2 - lines.length * lineHeight / 2 : 0;
-    for (let row = 0; row < lines.length; row++) {
-      const metrics = layerCtx.measureText(lines[row]);
-      const ascent = metrics.actualBoundingBoxAscent || size * .78;
-      const baseline = config.images?.length
-        ? startY + row * lineHeight + ascent
-        : row * lineHeight + ascent + size * .2;
-      drawTracked(layerCtx, lines[row], maskW / 2, baseline, spacing);
-    }
-    return { canvas:canvasLayer, ctx:canvasLayer.getContext('2d'), x, y, w:maskW, h:maskH, scale };
+    const w = Math.min(sceneW, Math.ceil(layout.widest + layout.size * .6));
+    const h = Math.min(sceneH, Math.ceil(layout.height + layout.size * .6));
+    const canvasLayer = makeCanvas(Math.ceil(w * scale), Math.ceil(h * scale));
+    const layerCtx = canvasLayer.getContext('2d');
+    layerCtx.scale(scale, scale);
+    paintText(layerCtx, config, layout, w / 2, h / 2);
+    return { canvas:canvasLayer, ctx:layerCtx, id:'primary-text', x:(sceneW-w)/2, y:(sceneH-h)/2, w, h, scale };
+  }
+
+  function copyTextLayer(item, x, y, w, h) {
+    const canvasLayer = makeCanvas(item.image.width, item.image.height);
+    const layerCtx = canvasLayer.getContext('2d');
+    layerCtx.drawImage(item.image, 0, 0);
+    return { canvas:canvasLayer, ctx:layerCtx, id:item.id, x, y, w, h, scale:canvasLayer.width/w, scaleY:canvasLayer.height/h };
   }
 
   async function start(config) {
@@ -322,88 +443,35 @@ export function createSimulation(canvas) {
     cycleConfig = { ...config };
     state = 'preparing';
     emit();
-    await new Promise(resolve => requestAnimationFrame(resolve));
 
-    const maxWidth = Math.max(80, width - 90), maxHeight = Math.max(80, height * .58), minSize = 24;
-    let size = config.size, lines = [], measure;
-    let maskW, maskH, maskCanvas, maskCtx;
-    const importedTextLayers=[];
-    if (config.images?.length) {
-      maskW=Math.max(1,Math.ceil(width)); maskH=Math.max(1,Math.ceil(height));
-      maskCanvas=makeCanvas(maskW,maskH); maskCtx=maskCanvas.getContext('2d',{willReadFrequently:true});
-      for (const item of config.images) {
-        const itemW=Math.max(1,Math.ceil(item.w*maskW)),itemH=Math.max(1,Math.ceil(item.h*maskH));
-        const layerCanvas=makeCanvas(itemW,itemH),layerCtx=layerCanvas.getContext('2d',{willReadFrequently:true});
-        if(item.hue)layerCtx.filter=`hue-rotate(${item.hue}deg)`;
-        layerCtx.drawImage(item.image,0,0,itemW,itemH);layerCtx.filter='none';
-        maskCtx.drawImage(layerCanvas,item.x*maskW,item.y*maskH,item.w*maskW,item.h*maskH);
-        if(item.kind==='live-text'){
-          const x=item.x*maskW,y=item.y*maskH,w=item.w*maskW,h=item.h*maskH;
-          importedTextLayers.push({canvas:item.image,ctx:item.image.getContext('2d'),x,y,w,h,scale:item.image.width/Math.max(1,w)});
-        }
-      }
-    }
-
-    if (config.text?.trim()) {
-      if (config.auto) {
-        for (size = Math.min(config.size, 180); size >= minSize; size -= 2) {
-          ({ lines, measure } = wrapLines(config.text, config.font, size, maxWidth, config.tracking || 0));
-          const widest = Math.max(0, ...lines.map(line => trackedWidth(measure,line,size*(config.tracking||0))));
-          if (lines.length * size * 1.15 <= maxHeight && widest <= maxWidth) break;
-        }
-        if (size < minSize) throw new Error('This text cannot fit legibly here. Shorten it or make the window larger.');
-      } else {
-        ({ lines, measure } = wrapLines(config.text, config.font, size, maxWidth, config.tracking || 0));
-        if (lines.length * size * 1.15 > maxHeight) throw new Error('This size overflows the scene. Turn on Auto fit or choose a smaller size.');
-      }
-    }
-
-    if (!config.images?.length) {
-      if (!lines.length) throw new Error('Add text or an image before starting.');
-      const lineHeight = size * 1.12;
-      measure.font = `600 ${size}px ${config.font}`;
-      const spacing=size*(config.tracking||0);
-      const widths = lines.map(line => trackedWidth(measure,line,spacing));
-      maskW = Math.ceil(Math.max(1, ...widths) + size * .5);
-      maskH = Math.ceil(lines.length * lineHeight + size * .5);
-      if (maskW > width - 24 || maskH > height * .82) throw new Error('This text needs a larger scene or less content.');
-      maskCanvas = makeCanvas(maskW, maskH);
-      maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
-      maskCtx.fillStyle = config.textColor || '#5b5b5b';
-      maskCtx.font = `600 ${size}px ${config.font}`;
-      maskCtx.textBaseline = 'alphabetic'; maskCtx.textAlign = 'center';
-      for (let row = 0; row < lines.length; row++) {
-        const metrics = maskCtx.measureText(lines[row]);
-        const ascent = metrics.actualBoundingBoxAscent || size * .78;
-        drawTracked(maskCtx,lines[row],maskW/2,row*lineHeight+ascent+size*.2,spacing);
-      }
-    } else if (lines.length) {
-      const lineHeight = size * 1.12, spacing = size * (config.tracking || 0);
-      maskCtx.fillStyle = config.textColor || '#5b5b5b';
-      maskCtx.font = `600 ${size}px ${config.font}`;
-      maskCtx.textBaseline = 'alphabetic'; maskCtx.textAlign = 'center';
-      const totalHeight = lines.length * lineHeight;
-      for (let row = 0; row < lines.length; row++) {
-        const metrics = maskCtx.measureText(lines[row]);
-        const ascent = metrics.actualBoundingBoxAscent || size * .78;
-        drawTracked(maskCtx, lines[row], maskW/2, maskH/2-totalHeight/2+row*lineHeight+ascent, spacing);
-      }
-    }
-
+    const maskW = Math.max(1, Math.ceil(width)), maskH = Math.max(1, Math.ceil(height));
+    const maskCanvas = makeCanvas(maskW, maskH);
+    const maskCtx = maskCanvas.getContext('2d', {willReadFrequently:true});
     textLayers = [];
-    if (lines.length) {
-      const vectorLayer = makeTextLayer(config, lines, size, maskW, maskH);
-      if (config.images?.length) {
-        vectorLayer.x = (maskW - vectorLayer.w) / 2;
-        vectorLayer.y = (maskH - vectorLayer.h) / 2;
+    hasRaster = false;
+    for (const item of config.images || []) {
+      const x = item.x * maskW, y = item.y * maskH, w = item.w * maskW, h = item.h * maskH;
+      if (item.kind === 'live-text') {
+        textLayers.push(copyTextLayer(item, x, y, w, h));
+        continue;
       }
-      textLayers.push(vectorLayer);
+      if (item.hue) maskCtx.filter = `hue-rotate(${item.hue}deg)`;
+      maskCtx.drawImage(item.image, x, y, w, h);
+      hasRaster = true;
+      maskCtx.filter = 'none';
     }
-    textLayers.push(...importedTextLayers);
+    if (config.text?.trim()) {
+      const layout = config.layout || layoutText(config, maskW, maskH);
+      textLayers.push(makeTextLayer(config, layout, maskW, maskH));
+    }
+    // Keep editable source canvases and the high resolution display layers separate from the bite mask.
+    const occupancyCanvas = makeCanvas(maskW, maskH);
+    const occupancyCtx = occupancyCanvas.getContext('2d', {willReadFrequently:true});
+    occupancyCtx.drawImage(maskCanvas, 0, 0);
+    for (const layer of textLayers) occupancyCtx.drawImage(layer.canvas, layer.x, layer.y, layer.w, layer.h);
+    makeSilhouette(occupancyCanvas);
 
-    makeSilhouette(maskCanvas);
-
-    const rgba = maskCtx.getImageData(0, 0, maskW, maskH).data;
+    const rgba = occupancyCtx.getImageData(0, 0, maskW, maskH).data;
     const cells = new Uint8Array(maskW * maskH);
     total = 0;
     for (let i = 0; i < cells.length; i++) {
@@ -414,22 +482,28 @@ export function createSimulation(canvas) {
     mask = { canvas: maskCanvas, ctx: maskCtx, w: maskW, h: maskH, data: cells, initial: cells.slice(), x: 0, y: 0 };
     remaining = total;
     biteTokens = targetBitesPerSecond() * .35;
-    body = config.images?.length
-      ? { w:width,h:height,x:0,y:0,scene:true }
-      : { w: maskW, h: maskH, x: (width - maskW) / 2, y: (height - maskH) / 2 };
+    body = { w:width, h:height, x:0, y:0, scene:true };
     mask.x = body.x; mask.y = body.y; mask.sx=mask.w/body.w; mask.sy=mask.h/body.h;
-    ants = []; crumbs = []; trails = []; trailClock = 0; bites = 0;
+    ants = []; crumbs = []; clearTrails(); bites = 0;
     rebuildBoundary();
     age = 0; lastBoundaryCompact = 0; paused = false; state = 'feeding';
     const colonySize = Math.max(2, Math.round(Number(antCountControl.value) || 12));
     for (let i = 0; i < colonySize; i++) spawnAnt();
+    accumulator = 0;
+    render();
     if (!raf) { lastTime = performance.now(); raf = requestAnimationFrame(frame); }
     emit();
   }
 
   function cancel() {
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
-    ants = []; crumbs = []; trails = []; boundary = []; boundaryFlags = null; textLayers = [];
+    ants = []; crumbs = []; clearTrails(); boundary = []; boundaryFlags = null; textLayers = [];
+    biteHistory = null;
+    timedStain = null;
+    stainTime = 0;
+    elapsed = 0;
+    source = '';
+    cycleConfig = null;
     body = null; mask = null; silhouetteCanvas=null;silhouetteCtx=null;total = 0; remaining = 0; biteTokens = 0; paused = false; state = 'editing';
     render();
     emit();
@@ -463,19 +537,27 @@ export function createSimulation(canvas) {
       const layer = makeCanvas(iw, ih), layerCtx = layer.getContext('2d', { willReadFrequently:true });
       if(item.hue)layerCtx.filter=`hue-rotate(${item.hue}deg)`;
       layerCtx.drawImage(item.image, 0, 0, iw, ih);layerCtx.filter='none';
-      mask.ctx.drawImage(layer, x, y, w, h);
-      addSilhouette(layer,x,y,w,h);
-      if (item.kind === 'live-text') {
-        textLayers.push({ canvas:item.image, ctx:item.image.getContext('2d'), x, y, w, h,
-          scale:item.image.width / Math.max(1, w) });
+      if (item.kind === 'live-text') textLayers.push(copyTextLayer(item, x, y, w, h));
+      else if (item.kind === 'chalk') textLayers.unshift(copyTextLayer(item, x, y, w, h));
+      else {
+        mask.ctx.drawImage(layer, x, y, w, h);
+        hasRaster = true;
       }
+      if (item.kind !== 'chalk') addSilhouette(layer, x, y, w, h);
       left = Math.min(left, Math.max(0, Math.floor(x) - 2));
       top = Math.min(top, Math.max(0, Math.floor(y) - 2));
       right = Math.max(right, Math.min(mask.w, Math.ceil(x + w) + 2));
       bottom = Math.max(bottom, Math.min(mask.h, Math.ceil(y + h) + 2));
     }
 
-    const scan = mask.ctx.getImageData(left, top, right - left, bottom - top).data;
+    const patch = makeCanvas(right - left, bottom - top);
+    const patchCtx = patch.getContext('2d', {willReadFrequently:true});
+    patchCtx.drawImage(mask.canvas, -left, -top);
+    for (const layer of textLayers) {
+      if (layer.x >= right || layer.y >= bottom || layer.x + layer.w <= left || layer.y + layer.h <= top) continue;
+      patchCtx.drawImage(layer.canvas, layer.x - left, layer.y - top, layer.w, layer.h);
+    }
+    const scan = patchCtx.getImageData(0, 0, patch.width, patch.height).data;
     let added = 0;
     for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
       const local = ((y - top) * (right - left) + x - left) * 4;
@@ -499,8 +581,91 @@ export function createSimulation(canvas) {
       }
       if (!ants.length) for (let i = 0; i < Math.max(2,Math.round(Number(antCountControl.value)||12)); i++) spawnAnt();
     }
+    if (!raf && !paused && state === 'feeding') {
+      lastTime = performance.now();
+      raf = requestAnimationFrame(frame);
+    }
     emit(); render();
     return added;
+  }
+
+  function removeLiveChalk(ids) {
+    const removed = textLayers.filter(layer => ids.includes(layer.id));
+    if (!mask || !removed.length) return;
+    textLayers = textLayers.filter(layer => !ids.includes(layer.id));
+    const left = Math.max(0, Math.floor(Math.min(...removed.map(layer => layer.x))));
+    const top = Math.max(0, Math.floor(Math.min(...removed.map(layer => layer.y))));
+    const right = Math.min(mask.w, Math.ceil(Math.max(...removed.map(layer => layer.x + layer.w))));
+    const bottom = Math.min(mask.h, Math.ceil(Math.max(...removed.map(layer => layer.y + layer.h))));
+    const patch = makeCanvas(right - left, bottom - top);
+    const ctx = patch.getContext('2d', {willReadFrequently:true});
+    ctx.drawImage(mask.canvas, -left, -top);
+    for (const layer of textLayers) {
+      if (layer.x >= right || layer.y >= bottom || layer.x + layer.w <= left || layer.y + layer.h <= top) continue;
+      ctx.drawImage(layer.canvas, layer.x - left, layer.y - top, layer.w, layer.h);
+    }
+    const pixels = ctx.getImageData(0, 0, patch.width, patch.height).data;
+    let gone = 0;
+    for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
+      const index = y * mask.w + x;
+      if (!mask.data[index] || pixels[((y - top) * patch.width + x - left) * 4 + 3] > 40) continue;
+      mask.data[index] = 0;
+      gone++;
+    }
+    remaining -= gone;
+    total -= gone;
+    rebuildBoundary();
+    render();
+    emit();
+  }
+
+  function updatePrimaryText(config) {
+    if (!mask || !config.text.trim()) return false;
+    const index = textLayers.findIndex(layer => layer.id === 'primary-text');
+    if (index === -1) return false;
+    const prior = textLayers[index];
+    const next = makeTextLayer(config, layoutText(config, mask.w, mask.h), mask.w, mask.h);
+    if (biteHistory) {
+      next.ctx.save();
+      next.ctx.globalCompositeOperation = 'destination-out';
+      next.ctx.drawImage(biteHistory.canvas, -next.x, -next.y);
+      next.ctx.restore();
+    }
+    textLayers[index] = next;
+
+    const left = Math.max(0, Math.floor(Math.min(prior.x, next.x)));
+    const top = Math.max(0, Math.floor(Math.min(prior.y, next.y)));
+    const right = Math.min(mask.w, Math.ceil(Math.max(prior.x + prior.w, next.x + next.w)));
+    const bottom = Math.min(mask.h, Math.ceil(Math.max(prior.y + prior.h, next.y + next.h)));
+    const patch = makeCanvas(right - left, bottom - top);
+    const context = patch.getContext('2d', {willReadFrequently:true});
+    context.drawImage(mask.canvas, -left, -top);
+    for (const layer of textLayers) {
+      if (layer.x >= right || layer.y >= bottom || layer.x + layer.w <= left || layer.y + layer.h <= top) continue;
+      context.drawImage(layer.canvas, layer.x-left, layer.y-top, layer.w, layer.h);
+    }
+    const pixels = context.getImageData(0, 0, patch.width, patch.height).data;
+    let delta = 0;
+    for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
+      const position = y * mask.w + x;
+      const present = pixels[((y-top) * patch.width+x-left) * 4 + 3] > 40 ? 1 : 0;
+      delta += present - mask.data[position];
+      mask.data[position] = present;
+    }
+    remaining += delta;
+    total += delta;
+    rebuildBoundary();
+    if (remaining > 0 && state !== 'feeding') {
+      state = 'feeding';
+      if (!ants.length) for (let i = 0; i < Number(antCountControl.value); i++) spawnAnt();
+      if (!paused && !raf) {
+        lastTime = performance.now();
+        raf = requestAnimationFrame(frame);
+      }
+    }
+    emit();
+    render();
+    return true;
   }
 
   function bite(ant) {
@@ -532,17 +697,22 @@ export function createSimulation(canvas) {
       mask.data[index] = 0;
       removed++;
     }
+    recordStain(points);
     const brush=biteBrush(biteRadius), feather=brush.extent;
-    mask.ctx.save();
-    mask.ctx.globalCompositeOperation = 'destination-out';
-    mask.ctx.drawImage(brush.canvas,centerX+.5-feather,centerY+.5-feather,feather*2,feather*2);
-    mask.ctx.restore();
+    if (!biteHistory && source.trim()) biteHistory = makeCanvas(mask.w, mask.h).getContext('2d');
+    if (biteHistory) biteHistory.drawImage(brush.canvas, centerX+.5-feather, centerY+.5-feather, feather*2, feather*2);
+    if (hasRaster) {
+      mask.ctx.save();
+      mask.ctx.globalCompositeOperation = 'destination-out';
+      mask.ctx.drawImage(brush.canvas,centerX+.5-feather,centerY+.5-feather,feather*2,feather*2);
+      mask.ctx.restore();
+    }
     for (const layer of textLayers) {
       const localX = centerX - layer.x, localY = centerY - layer.y;
       if (localX < -feather || localY < -feather || localX > layer.w + feather || localY > layer.h + feather) continue;
       const highResCtx = layer.ctx;
       highResCtx.save();
-      highResCtx.setTransform(layer.scale, 0, 0, layer.scale, 0, 0);
+      highResCtx.setTransform(layer.scale, 0, 0, layer.scaleY ?? layer.scale, 0, 0);
       highResCtx.globalCompositeOperation = 'destination-out';
       highResCtx.drawImage(brush.canvas,localX+.5-feather,localY+.5-feather,feather*2,feather*2);
       highResCtx.restore();
@@ -672,30 +842,86 @@ export function createSimulation(canvas) {
     if (bites > bitesBefore) emitProgress();
   }
 
+  function clearTrails() {
+    trails = [];
+    trailDotCount = 0;
+    for (const ant of ants) ant.trailX = ant.trailY = null;
+  }
+
+  function trailDotLimit() { return width < 700 ? 4200 : 8000; }
+
+  function updateTrails() {
+    const duration = Number(trailsControl.value);
+    if (duration <= 0) {
+      if (trails.length) clearTrails();
+      return;
+    }
+    while (trails.length && age - trails[0].born >= duration) trailDotCount -= trails.shift().count;
+
+    const spacing = 5.5, radius = 1.1;
+    const slice = Math.floor(age / .15);
+    let batch = trails.at(-1);
+    for (const ant of ants) {
+      if (ant.state === 'feeding' || ant.x < 0 || ant.x > width || ant.y < 0 || ant.y > height) {
+        ant.trailX = ant.trailY = null;
+        continue;
+      }
+      if (ant.trailX == null) {
+        ant.trailX = ant.x;
+        ant.trailY = ant.y;
+        continue;
+      }
+      const dx = ant.x - ant.trailX, dy = ant.y - ant.trailY, distance = Math.hypot(dx, dy);
+      const steps = Math.floor(distance / spacing);
+      if (!steps) continue;
+      if (batch?.slice !== slice) {
+        batch = { slice, born:age, path:new Path2D(), count:0 };
+        trails.push(batch);
+      }
+      const sx = dx / distance * spacing, sy = dy / distance * spacing;
+      for (let step = 0; step < steps; step++) {
+        ant.trailX += sx;
+        ant.trailY += sy;
+        batch.path.moveTo(ant.trailX + radius, ant.trailY);
+        batch.path.arc(ant.trailX, ant.trailY, radius, 0, Math.PI * 2);
+      }
+      batch.count += steps;
+      trailDotCount += steps;
+    }
+    const dotLimit = trailDotLimit();
+    while (trailDotCount > dotLimit && trails.length > 1) trailDotCount -= trails.shift().count;
+  }
+
+  function drawTrails() {
+    const duration = Number(trailsControl.value);
+    if (duration <= 0 || !trails.length) return;
+    ctx.fillStyle = darkMode ? '#ededed' : '#444';
+    const time = age + accumulator;
+    const dotLimit = trailDotLimit(), fadeBand = dotLimit * .2;
+    let dotsAhead = trailDotCount;
+    for (const trail of trails) {
+      const budgetFade = clamp((dotLimit - dotsAhead) / fadeBand, 0, 1);
+      dotsAhead -= trail.count;
+      const strength = clamp(1 - (time - trail.born) / duration, 0, 1) * budgetFade;
+      if (strength <= 0) continue;
+      ctx.globalAlpha = .72 * strength * strength * (3 - 2 * strength);
+      ctx.fill(trail.path);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function update(dt) {
     if (paused || !body) return;
     age += dt;
     biteTokens=Math.min(biteTokens+targetBitesPerSecond()*dt,Math.max(1,targetBitesPerSecond()*.5));
     updateAnts(dt);
-    const trailDuration = Number(trailsControl.value);
-    if (trailDuration <= 0) trails = [];
-    else {
-      trailClock += dt;
-      if (trailClock >= .075) {
-        trailClock = 0;
-        const life = trailDuration;
-        const trailLimit = width < 700 ? 320 : 7000;
-        for (const ant of ants) if (ant.state !== 'feeding' && trails.length < trailLimit)
-          trails.push({ x:ant.x, y:ant.y, age:0, life, size:.65 + trailDuration * .035 });
-      }
-      for (let i = trails.length - 1; i >= 0; i--) { trails[i].age += dt; if (trails[i].age >= trails[i].life) trails.splice(i, 1); }
-    }
+    updateTrails();
     for (let i = crumbs.length - 1; i >= 0; i--) {
       const crumb = crumbs[i];
       crumb.life -= dt; crumb.x += crumb.vx * dt; crumb.y += crumb.vy * dt; crumb.vy += 55 * dt;
       if (crumb.life <= 0) crumbs.splice(i, 1);
     }
-    if (remaining === 0) {
+    if (remaining === 0 && state !== 'finished') {
       state = 'clearing';
       if (!ants.length && !crumbs.length) { state = 'finished'; emit(); }
     }
@@ -760,22 +986,24 @@ export function createSimulation(canvas) {
 
   function render() {
     ctx.fillStyle = darkMode ? '#252525' : '#e7e7e7'; ctx.fillRect(0, 0, width, height);
-    for (const trail of trails) {
-      ctx.globalAlpha = clamp(1 - trail.age / trail.life, 0, 1) * .42;
-      ctx.fillStyle = darkMode ? '#bdbdbd' : '#555'; ctx.beginPath(); ctx.arc(trail.x, trail.y, trail.size, 0, Math.PI * 2); ctx.fill();
-    }
     ctx.globalAlpha = 1;
     if (body && mask) {
       const deform = Number(deformationControl.value) / 100;
       const sag = Math.sin(age * .14) * deform * Math.min(mask.h * .03, 3);
-      if(silhouetteCanvas){ctx.globalAlpha=.12;ctx.drawImage(silhouetteCanvas,body.x,body.y+sag,body.w,body.h);ctx.globalAlpha=1;}
-      ctx.drawImage(mask.canvas, body.x, body.y + sag, body.w, body.h);
+      const stain = stainCanvas();
+      if (stain) {
+        ctx.globalAlpha = .12;
+        ctx.drawImage(stain, body.x, body.y + sag, body.w, body.h);
+        ctx.globalAlpha = 1;
+      }
+      if (hasRaster) ctx.drawImage(mask.canvas, body.x, body.y + sag, body.w, body.h);
       for (const layer of textLayers) {
         const layerX = body.x + layer.x / mask.sx;
         const layerY = body.y + layer.y / mask.sy + sag;
         ctx.drawImage(layer.canvas, layerX, layerY, layer.w / mask.sx, layer.h / mask.sy);
       }
     }
+    drawTrails();
     for (const crumb of crumbs) {
       ctx.globalAlpha = clamp(crumb.life / .8, 0, 1); ctx.fillStyle = '#989898';
       ctx.beginPath(); ctx.arc(crumb.x, crumb.y, crumb.size, 0, Math.PI * 2); ctx.fill();
@@ -786,16 +1014,19 @@ export function createSimulation(canvas) {
 
   function frame(now) {
     if (!raf) return;
-    const dt = Math.min(.05, Math.max(0, (now - lastTime) / 1000));
+    const frameSeconds = Math.max(0, (now - lastTime) / 1000);
+    const dt = Math.min(.05, frameSeconds);
     lastTime = now;
     if (!paused) {
+      stainTime += frameSeconds;
+      if (state === 'feeding' || state === 'clearing') elapsed += frameSeconds;
       const step = 1 / 60;
       accumulator += dt;
       while (accumulator >= step) { update(step); accumulator -= step; }
+      if (Math.floor(elapsed) !== emittedSecond) emit();
     }
-    const renderEvery = 1000 / 60;
-    if (now - lastRenderTime >= renderEvery) { render(); lastRenderTime = now; }
-    raf = requestAnimationFrame(frame);
+    render();
+    raf = state === 'finished' && !trails.length && !timedStainIsVisible() ? 0 : requestAnimationFrame(frame);
   }
 
   function pause() { paused = true; if (raf) { cancelAnimationFrame(raf); raf = 0; } }
@@ -804,17 +1035,24 @@ export function createSimulation(canvas) {
   function resumeFromHidden() { if (hiddenPause) { paused = wasPaused; hiddenPause = false; lastTime = performance.now(); if (!paused && !raf && body) raf = requestAnimationFrame(frame); } }
   function exportPng() {
     if (!body) throw new Error('There is no scene to export yet.');
-    const wasPaused = paused, wasDpr = dpr, wasWidth = canvas.width, wasHeight = canvas.height;
-    paused = true; dpr = Math.min(Math.max(wasDpr, 3), 4);
-    canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); render();
-    canvas.toBlob(blob => {
-      if (blob) {
-        const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
-        link.download = 'natural-decay.png'; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-      }
-      dpr = wasDpr; canvas.width = wasWidth; canvas.height = wasHeight; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); render();
-      paused = wasPaused;
+    const scale = Math.max(3, dpr);
+    const output = makeCanvas(Math.round(width * scale), Math.round(height * scale));
+    const liveContext = ctx;
+    ctx = output.getContext('2d', {alpha:false});
+    try {
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.imageSmoothingQuality = 'high';
+      render();
+    } finally {
+      ctx = liveContext;
+    }
+    output.toBlob(blob => {
+      if (!blob) return;
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'natural-decay.png';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     }, 'image/png');
   }
 
@@ -832,8 +1070,12 @@ export function createSimulation(canvas) {
   }
 
   return {
-    start, addImages, cancel, pause, resume, pauseForHidden, resumeFromHidden, resize, exportPng, setAntImage,
+    start, addImages, removeLiveChalk, updatePrimaryText, cancel, pause, resume, pauseForHidden, resumeFromHidden, resize, exportPng, setAntImage, setStainDuration,
     setTheme(value) { darkMode = !!value; render(); },
+    refreshTrails() {
+      if (Number(trailsControl.value) === 0) clearTrails();
+      render();
+    },
     onUpdate(callback) { onUpdate = callback; },
     isTextAt(x, y) { return !!mask && occupied(x, y); },
     get paused() { return paused; },

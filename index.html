@@ -8,19 +8,28 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <main class="app" id="app">
     <div class="stage-wrap" aria-label="Typography scene">
       <canvas id="scene" aria-label="Ants consuming the centered scene"></canvas>
-      <textarea id="copy" class="type-editor" rows="2" spellcheck="false" aria-label="Your text" aria-describedby="edit-hint">slowly, then all at once</textarea>
+      <canvas id="text-preview" class="text-preview" aria-hidden="true"></canvas>
+      <div id="primary-text-selection" aria-hidden="true" hidden></div>
+      <textarea id="copy" class="type-editor" rows="2" spellcheck="false" placeholder="Type here" aria-label="Your text" aria-describedby="edit-hint">slowly, then all at once</textarea>
+      <button id="remove-primary-text" class="layer-remove" type="button" title="Remove text" aria-label="Remove text" hidden><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
       <div id="image-layer" class="image-layer" aria-label="Image collage" tabindex="-1" hidden></div>
       <canvas id="drawing-layer" class="drawing-layer" aria-label="Chalk drawing layer" hidden></canvas>
+      <button id="remove-drawing-layer" class="layer-remove" type="button" title="Remove drawing" aria-label="Remove drawing" hidden><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
       <input id="image-file" type="file" accept="image/png,image/jpeg,image/svg+xml" multiple hidden>
       <div class="brand-pill"><strong>NATURAL DECAY</strong><span>TYPE STUDY / 01</span><button id="info-open" class="info-button icon-button" aria-label="About Natural Decay" title="About Natural Decay"><span class="info-glyph" aria-hidden="true">i</span></button></div>
-      <label class="theme-toggle" title="Switch between light and dark mode"><span class="material-symbols-outlined" aria-hidden="true">light_mode</span><input id="theme-toggle" type="checkbox" role="switch" aria-label="Dark mode"><span class="material-symbols-outlined" aria-hidden="true">dark_mode</span></label>
+      <div class="header-utilities">
+        <label class="theme-toggle" title="Switch between light and dark mode"><span class="material-symbols-outlined" aria-hidden="true">light_mode</span><input id="theme-toggle" type="checkbox" role="switch" aria-label="Dark mode"><span class="material-symbols-outlined" aria-hidden="true">dark_mode</span></label>
+        <div class="session-timer" role="timer" aria-label="Session elapsed time" title="Time spent playing this session">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg>
+          <time id="session-elapsed" datetime="PT0S">00:00</time>
+        </div>
+      </div>
       <button id="export" class="tweak-trigger frame-export" title="Download this frame"><span class="material-symbols-outlined" aria-hidden="true">download</span><span>Download frame</span></button>
       <button id="tweak-open" class="tweak-trigger" aria-haspopup="dialog" aria-controls="tweaks"><span class="material-symbols-outlined" aria-hidden="true">tune</span><span>Tweak</span></button>
       <div class="scene-meta"><span id="state-label" aria-live="polite">READY TO FEED</span><span id="remaining"></span></div>
@@ -30,8 +39,8 @@
         <div class="toolbar-controls">
           <div class="transport" role="group" aria-label="Simulation controls">
             <button id="play-pause" class="icon-button primary-icon" aria-label="Start feeding" title="Start feeding"><span class="material-symbols-outlined" aria-hidden="true">play_arrow</span></button>
-            <button id="replay" class="icon-button" aria-label="Reset simulation" title="Reset simulation" disabled><span class="material-symbols-outlined" aria-hidden="true">restart_alt</span></button>
-            <button id="edit" class="icon-button" aria-label="Edit composition" title="Edit composition" disabled><span class="material-symbols-outlined" aria-hidden="true">edit</span></button>
+            <button id="replay" class="icon-button" aria-label="Reset simulation and edit" title="Reset simulation and edit" aria-haspopup="dialog" aria-controls="confirm-session" disabled><span class="material-symbols-outlined" aria-hidden="true">restart_alt</span></button>
+            <button id="scrap" class="icon-button" aria-label="Scrap composition" title="Scrap composition" aria-haspopup="dialog" aria-controls="confirm-session"><span class="material-symbols-outlined" aria-hidden="true">delete</span></button>
           </div>
           <div id="mode-switch" class="mode-switch" role="group" aria-label="Composition mode">
             <button id="mode-text" class="mode-option active" type="button" aria-pressed="true">Text</button>
@@ -39,10 +48,11 @@
             <button id="mode-draw" class="mode-option draw-option" type="button" aria-pressed="false"><span class="material-symbols-outlined" aria-hidden="true">edit</span><span>Draw</span></button>
           </div>
           <div class="toolbar-actions">
+            <button id="add-text-layer" class="panel-action compact-action" type="button" title="Add a text layer" aria-label="Add a text layer"><span class="material-symbols-outlined" aria-hidden="true">text_fields</span><span>Add text</span></button>
             <div id="type-style" class="type-style" aria-label="Text styling tools">
-            <details class="style-popover" name="toolbar-popover"><summary aria-label="Font and text size" title="Font and text size"><span class="material-symbols-outlined" aria-hidden="true">font_download</span><span>Font</span></summary><div class="font-panel"><div class="popover-title">Typeface</div><div id="font-options" class="font-options" role="listbox" aria-label="Typeface options"></div><label class="size-tool"><span>Size</span><small id="edit-size-value">88 px</small><input id="edit-size" type="range" min="28" max="160" value="88" aria-label="Text size"></label></div></details>
-            <details class="style-popover" name="toolbar-popover"><summary aria-label="Text color" title="Text color"><span class="material-symbols-outlined" aria-hidden="true">palette</span><span>Color</span></summary><div class="color-panel"><div class="popover-title">Text color</div><div class="color-swatches" role="group" aria-label="Choose text color"><button type="button" data-color="#202020" aria-label="Black" class="color-swatch"></button><button type="button" data-color="#5b5b5b" aria-label="Charcoal" class="color-swatch"></button><button type="button" data-color="#888888" aria-label="Grey" class="color-swatch"></button><button type="button" data-color="#d0d0d0" aria-label="Light grey" class="color-swatch"></button><button type="button" data-color="#ffffff" aria-label="White" class="color-swatch"></button><button type="button" data-color="#cf3b3b" aria-label="Red" class="color-swatch"></button><button type="button" data-color="#df8b22" aria-label="Orange" class="color-swatch"></button><button type="button" data-color="#d6c33a" aria-label="Yellow" class="color-swatch"></button><button type="button" data-color="#3c9b67" aria-label="Green" class="color-swatch"></button><button type="button" data-color="#3289c9" aria-label="Blue" class="color-swatch"></button><button type="button" data-color="#7754b8" aria-label="Purple" class="color-swatch"></button><button type="button" data-color="#ca4f91" aria-label="Pink" class="color-swatch"></button></div><label class="custom-color">Hex<input id="text-color" type="text" value="#5b5b5b" aria-label="Custom hex text color" maxlength="7" inputmode="text"></label></div></details>
-            <button id="add-text-layer" class="panel-action compact-action" type="button" title="Add a new text layer" aria-label="Add a new text layer" hidden><span class="material-symbols-outlined" aria-hidden="true">text_fields</span><span>Add text</span></button>
+            <details class="style-popover" name="toolbar-popover"><summary aria-label="Font and text size" title="Font and text size"><span class="material-symbols-outlined" aria-hidden="true">font_download</span><span>Font</span></summary><div class="font-panel"><div class="popover-title">Typeface</div><p class="text-target" data-text-target></p><div id="font-options" class="font-options" role="listbox" aria-label="Typeface options"></div><label class="size-tool"><span>Size</span><small id="edit-size-value">88 px</small><input id="edit-size" type="range" min="28" max="160" value="88" aria-label="Text size"></label></div></details>
+            <details class="style-popover" name="toolbar-popover"><summary aria-label="Text color" title="Text color"><span class="material-symbols-outlined" aria-hidden="true">palette</span><span>Color</span></summary><div class="color-panel"><div class="popover-title">Text color</div><p class="text-target" data-text-target></p><div class="color-swatches" role="group" aria-label="Choose text color"><button type="button" data-color="#202020" aria-label="Black" class="color-swatch"></button><button type="button" data-color="#5b5b5b" aria-label="Charcoal" class="color-swatch"></button><button type="button" data-color="#888888" aria-label="Grey" class="color-swatch"></button><button type="button" data-color="#d0d0d0" aria-label="Light grey" class="color-swatch"></button><button type="button" data-color="#ffffff" aria-label="White" class="color-swatch"></button><button type="button" data-color="#cf3b3b" aria-label="Red" class="color-swatch"></button><button type="button" data-color="#df8b22" aria-label="Orange" class="color-swatch"></button><button type="button" data-color="#d6c33a" aria-label="Yellow" class="color-swatch"></button><button type="button" data-color="#3c9b67" aria-label="Green" class="color-swatch"></button><button type="button" data-color="#3289c9" aria-label="Blue" class="color-swatch"></button><button type="button" data-color="#7754b8" aria-label="Purple" class="color-swatch"></button><button type="button" data-color="#ca4f91" aria-label="Pink" class="color-swatch"></button></div><label class="custom-color">Hex<input id="text-color" type="text" value="#5b5b5b" aria-label="Custom hex text color" maxlength="7" inputmode="text"></label></div></details>
+            </div>
             <div id="image-tools" class="image-tools" hidden>
               <button id="add-image" class="panel-action compact-action" title="Choose images"><span class="material-symbols-outlined" aria-hidden="true">image</span><span>Select</span></button>
               <button id="paste-image" class="panel-action compact-action" title="Paste images from the clipboard"><span class="material-symbols-outlined" aria-hidden="true">content_paste</span><span>Paste</span></button>
@@ -53,7 +63,7 @@
               <div class="hue-panel"><div class="popover-title">Image hue</div><div class="hue-chip-row"><span id="image-hue-chip" class="hue-chip"></span><small id="image-hue-value">Original</small></div><input id="image-hue" type="range" min="0" max="359" value="0" aria-label="Shift image hue"><button id="image-hue-reset" class="panel-action hue-reset" type="button"><span class="material-symbols-outlined" aria-hidden="true">undo</span>No hue</button></div>
             </details>
             <details id="draw-settings" class="style-popover draw-settings" name="toolbar-popover" hidden>
-              <summary aria-label="Brush size and color" title="Brush size and color"><span class="material-symbols-outlined" aria-hidden="true">line_weight</span><span>Size</span></summary>
+              <summary aria-label="Brush settings" title="Brush size and color"><span class="material-symbols-outlined" aria-hidden="true">tune</span><span>Brush</span></summary>
               <div class="draw-panel">
                 <div class="popover-title">Chalk brush</div>
                 <label class="brush-size">Size <small id="draw-size-value">12 px</small><input id="draw-size" type="range" min="2" max="36" value="12" aria-label="Chalk brush size"></label>
@@ -69,8 +79,8 @@
           </div>
           <button id="minimize-ui" class="icon-button fullscreen-toggle" aria-label="Hide interface" title="Hide interface"><span class="material-symbols-outlined" aria-hidden="true">fullscreen</span></button>
         </div>
+        <button id="restore-ui" class="icon-button restore-ui" type="button" aria-label="Show interface" title="Show interface" inert><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4m11-5v5h5M4 15h5v5m11-5h-5v5"/></svg></button>
       </div>
-      <button id="restore-ui" class="icon-button restore-ui" type="button" aria-label="Show interface" title="Show interface" hidden><span class="material-symbols-outlined" aria-hidden="true">fullscreen_exit</span></button>
     </div>
 
     <dialog id="tweaks" class="tweaks" aria-labelledby="tweaks-title">
@@ -78,19 +88,29 @@
       <div class="tweak-content">
         <div class="field"><label for="ant-file">Custom ant</label><p>Use your own PNG or SVG ant. It stays on this device for this session.</p><input id="ant-file" type="file" accept="image/png,image/svg+xml"><button id="reset-ant" class="panel-action"><span class="material-symbols-outlined" aria-hidden="true">restart_alt</span>Use default ant</button></div>
         <div class="field"><label for="ant-speed">Ant speed <small id="ant-speed-value">2.0×</small></label><p>How quickly ants walk between the colony edge and food.</p><input id="ant-speed" type="range" min="0.4" max="5" step="0.1" value="2"></div>
-        <div class="field"><label for="ant-count">Ant amount <small id="ant-count-value">24 ants</small></label><p>Sets how many ants work the scene at once.</p><input id="ant-count" type="range" min="2" max="48" step="1" value="24"></div>
+        <div class="field"><label for="ant-count">Ant amount <small id="ant-count-value">24 ants</small></label><p>Sets how many ants work the scene at once.</p><input id="ant-count" type="range" min="2" max="64" step="1" value="24"></div>
         <div class="field"><label for="eating-frequency">Eating frequency <small id="eating-frequency-value">6.0×</small></label><p>How often ants take a bite while feeding, up to 10× faster.</p><input id="eating-frequency" type="range" min="0.25" max="10" step="0.05" value="6"></div>
         <div class="field"><label for="decay-speed">Decay speed <small id="decay-speed-value">4.0×</small></label><p>Controls how much material each bite removes, up to 10× faster. At maximum settings, a typical scene aims to clear in about 30 seconds.</p><input id="decay-speed" type="range" min="1" max="10" step="0.1" value="4"></div>
         <div class="field"><label for="ant-chaos">Ant chaos <small id="ant-chaos-value">35%</small></label><p>Adds wandering turns while ants keep food in focus; higher values create broader turns.</p><input id="ant-chaos" type="range" min="0" max="100" step="1" value="35"></div>
         <div class="field"><label for="preset">Material response</label><p>Sets bite size and the roughness left at feeding edges.</p><select id="preset"><option value="soft">Soft</option><option value="crumbly">Crumbly</option><option value="firm">Firm</option><option value="custom">Custom</option></select></div>
-        <div class="field"><label for="size">Type size <small id="size-value">88 px</small></label><p>Sets the requested text size for your next cycle.</p><input id="size" type="range" min="28" max="160" value="88"></div>
-        <div class="field"><label class="check-label" for="autofit"><input id="autofit" type="checkbox" checked><span>Auto fit</span></label><p>Scales the text down when needed to fit the scene.</p></div>
+        <div class="field"><label for="size">Type size <small id="size-value">88 px</small></label><p>Sets your preferred size. Long text scales to fit the composition.</p><input id="size" type="range" min="28" max="160" value="88"></div>
         <div class="field"><label for="resistance">Resistance <small id="resistance-value">35%</small></label><p>Higher resistance makes each bite take longer.</p><input id="resistance" type="range" min="0" max="100" value="35"></div>
         <div class="field"><label for="deform">Deformation <small id="deform-value">2.0%</small></label><p>Controls the text’s subtle movement as it weakens.</p><input id="deform" type="range" min="0" max="5" step="0.1" value="2"></div>
         <div class="field trail-field"><label for="trails">Ant trails <small id="trail-value">Off</small></label><p>How long ant footsteps linger, up to 10 seconds.</p><input id="trails" type="range" min="0" max="10" step="0.5" value="0" aria-label="Ant trail duration in seconds"></div>
+        <div class="field"><label for="stain-duration">Stain duration <small id="stain-value">Session</small></label><p>Hide stains, fade them over 10 seconds to 2 minutes, or keep them for the session.</p><input id="stain-duration" type="range" min="5" max="125" step="5" value="125" aria-valuetext="Session"></div>
         <div class="panel-actions"><button id="copy-text" class="panel-action"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span>Copy original text</button></div>
         <p class="privacy-note">The interface stays grayscale; text and source images keep their chosen colors. Fonts load from Google Fonts.</p>
       </div>
+    </dialog>
+    <dialog id="confirm-session" class="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-description">
+      <form method="dialog">
+        <h2 id="confirm-title">Do you want to reset the simulation?</h2>
+        <p id="confirm-description">Clear the decay and return to Edit with your composition intact.</p>
+        <div class="confirm-actions">
+          <button class="panel-action" type="submit" value="cancel" autofocus>Cancel</button>
+          <button class="panel-action confirm-primary" id="confirm-session-action" type="submit" value="confirm">Reset and edit</button>
+        </div>
+      </form>
     </dialog>
     <dialog id="about" class="about-dialog" aria-labelledby="about-title">
       <div class="dialog-head"><div><p class="eyebrow">A LITTLE ABOUT THIS TOOL</p><h2 id="about-title">Natural Decay</h2></div><button id="about-close" class="close icon-button" aria-label="Close about panel" title="Close"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>

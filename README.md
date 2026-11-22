@@ -1,41 +1,35 @@
 ﻿# Natural Decay
 
-A static, browser-based typography and image-feeding simulation. There is no build step. Your text, images, and custom ant stay in the current browser session; the app does not upload them. Google Fonts and Material Symbols load from online Google Fonts, so those need an internet connection. System fonts are used if you are offline.
+A static typography and image feeding simulation. Your text, images, and custom ant stay in the current browser session. Typefaces load from Google Fonts when online and fall back to system fonts offline.
 
-## Run on Windows
+## Run locally
 
-1. Keep the `outputs` folder intact; `index.html` needs the neighboring `js`, `assets`, and `styles.css` files.
-2. If Python is not installed, install it once from [python.org](https://www.python.org/downloads/windows/) and select **Add python.exe to PATH** in the installer. The app itself needs no install.
-3. Double-click **`run-local.bat`**.
-4. Your browser opens `http://127.0.0.1:8000`. Leave the black command window open while using the app; it is the small local web server. Close that window when you are finished.
+Extract the ZIP and open **`natural-decay.html`** in a modern browser. This version includes the app, icons, and default ant and needs no local server. If the browser blocks clipboard access, use **Select** to choose an image.
 
-Or open PowerShell in this folder and run `py -m http.server 8000 --bind 127.0.0.1`, then visit `http://127.0.0.1:8000`. If Python is already installed but the `py` command is unavailable, use `python -m http.server 8000 --bind 127.0.0.1`. On macOS or Linux, use `python3 -m http.server 8000 --bind 127.0.0.1`. If you prefer, open this folder in VS Code and run it with the Live Server extension.
-
-### Why double-clicking `index.html` does not work
-
-Double-clicking opens a `file:///.../index.html` address. This app loads its JavaScript as browser modules from separate files. Browsers restrict those module requests when a page is opened directly from disk, so the controls and simulation may not start. A local server gives the files a normal `http://localhost` address without putting them on the public internet. This launcher binds to this computer only.
+To run the editable source, keep `index.html`, `styles.css`, `js`, and `assets` together. On Windows, double-click **`run-local.bat`** with Python installed, or run `py -m http.server 8000 --bind 127.0.0.1` from this folder and open `http://127.0.0.1:8000/`. On macOS or Linux, use `python3` instead of `py`. The source version uses JavaScript modules, which browsers typically block when opened directly from disk.
 
 ## Use
 
-- Use the ordered toolbar at the bottom: Play/Pause, Reset, and Edit are at the left, followed by the **Text**, **Images**, and **Draw** modes and their tools. On phones the toolbar wraps into two steady rows. Fullscreen hides the other controls and leaves its own toggle at the bottom; press Escape to restore the interface. Only one panel or dialog stays open at once. Font choices and the size slider share one scrollable panel, and the color panel uses in-page swatches plus a hex field rather than a separate system picker. Press **Enter** to feed; **Shift+Enter** adds a line. Double-click the scene to return to editing.
+- The bottom toolbar starts with Play/Pause, Reset, and Scrap, followed by **Text**, **Images**, and **Draw**. Use the fullscreen button to collapse the toolbar, and the restore button or Escape to bring it back. Press **Enter** in the text editor to feed or **Shift+Enter** to add a line.
 - Text and images can share one composition before feeding starts. Type your text, switch to **Images**, and add one or several PNG, JPEG, or SVG files; the text stays visible above the collage while you arrange it. Switch back to **Text** to edit the wording, then press Enter or Play to start the combined scene. Drag files from your computer onto the stage or use **Paste** / Ctrl+V. Drag an image to move it and use a corner handle to resize it; select an image and use Remove to take it out.
-- **Draw** lets you sketch on the scene with a textured chalk brush. Open **Size** to adjust the brush and choose a color from the type palette; **Undo** removes the last stroke, and the panel can clear the full sketch. Your drawing is eaten along with images and text.
+- **Draw** lets you sketch with textured chalk. Open **Brush** to adjust its size and color. Use **Undo** to remove the last stroke.
 - The bottom dock keeps composition tools on one row and play, reset, and fullscreen controls on a second. Use the fullscreen icon to hide the interface; its small restore button stays at the bottom of the screen. Press Escape to restore the controls.
 - In **Images**, select an image and open the palette to shift its hue. **No hue** returns that image to its original colors. The image itself is never changed, so reset remains immediate.
-- Draw remains available during a live run. In a live run, release the pointer to add each chalk stroke to the material being eaten. Use the undo icon before starting to remove the last chalk stroke.
-- Once half of the current material has been eaten, switch to **Text** and use the text-layer button to add another line of copy. Type in the box, drag its Move handle, resize it from a corner, then confirm or cancel it. Added text stays above images and joins the current simulation without resetting earlier decay.
-- A faint, low-resolution grey silhouette preserves the original outlines of eaten material. It is drawn behind the remaining material and new additions, so it adds a trace of earlier content without changing the eating mask.
-- Text is fixed for one simulation run. To change it, pause with Edit and start another run. You can add images to an active run: position each pending image, then use the **check** or **cross** attached to that imageâ€™s upper corner to commit or discard it. Existing material keeps its current decay, and eating edges have a light feather.
-- Click the open scene to pause or resume feeding. The play/pause control does the same thing.
+- Release the pointer to add a chalk stroke during playback. Undo removes the most recent stroke in the draft or live run.
+- **Add text** is available in Text mode before and during playback. Type in the box, drag its Move handle, resize it from a corner, then confirm or cancel the layer. Click any box in Edit to change its wording or style. Font and Color show which box is selected, and each box keeps its own settings.
+- **Stain duration** in Tweak controls the faint outline left behind by eaten material. **Off** hides it. A duration from 10 seconds to 2 minutes fades each eaten area, including after the ants finish. **Session** keeps the original silhouettes until the run is reset.
+- The timer beside the theme switch counts active playback. It stops when paused or finished and resets when you reset or scrap the session.
+- Use **Reset** to return to Edit and change the original wording. During playback, Font, Size, and Color update the original text while keeping earlier bites. When a new text layer is open, those controls change that layer. To place an image during playback, use its **check** button or click outside it. The **cross** discards it.
+- Use **Play/Pause** to pause or resume. **Reset** asks for confirmation, removes decay, and returns to Edit with the composition intact. **Scrap** asks for confirmation and clears the composition and session. In Edit, use the corner cross to remove a text, image, or drawing layer.
 - Text stays crisp by keeping a high-resolution text layer for display while the ants eat a matching simulation mask. The simulation targets 60 frames per second on desktop and mobile. On narrower screens it keeps a smaller colony, fewer footprint points, a 1.25× canvas scale, and cheaper bite edges to balance smoothness and sharpness with battery and processor load. Canvas rendering uses one opaque background paint per frame, and pauses completely while hidden or paused.
 - The interface stays grayscale; text and source images keep their own colors.
 - Use the sun/moon switch at the upper left to change between light and dark mode. Light mode is the default.
 - Choose **Add images** for one or several PNG, JPEG, or SVG files. You can also drag files from your computer onto the stage, or use **Paste** / Ctrl+V for clipboard images. Images are kept as pasted, including solid white or black backgrounds. Drag an image to move it and pull any corner handle to resize it; select an image and use Remove to take it out. Text spacing stays matched between the edit preview and feeding scene.
-- **Tweak** has ant speed (up to 5×), ant amount (up to 48), decay speed (up to 10× per bite), ant chaos, eating frequency (up to 10×), material response, text size, Auto fit, resistance, deformation, and custom ant settings. Higher feeding settings are balanced together so a typical scene aims for roughly 30 seconds to decay when ant amount, ant speed, decay speed, and eating frequency are all maxed; image size, shape, and material response can change the actual time. Ants stay on a food patch for more bites, avoid recent meals, and reroute after circling or when they stop making progress toward food.
-- **Ant trails** is in Tweak settings. It starts Off; set it from 0 to 10 seconds to control how long footprints linger.
+- **Tweak** has ant speed (up to 5×), ant count (up to 64), decay speed (up to 10×), ant chaos, eating frequency (up to 10×), material response, text size, resistance, deformation, and custom ant settings. Decay time varies with the shape, size, and material. Ants stay on food patches for several bites and reroute when they stop making progress.
+- **Ant trails** is in Tweak settings. It starts Off. Set it up to 10 seconds to show spaced dots that fade as the ants move on.
 - **Download frame** sits beside Tweak on the main screen. It creates a higher-resolution PNG (up to four times the display scale) without the old interface rule.
 
-The text limit is 500 grapheme clusters. Auto fit is on by default. Turn it off to use the selected pixel size; an overflowing composition asks you to reduce the size. Reloading clears the current composition and custom ant selection.
+The text limit is 500 grapheme clusters. Text scales down to fit the composition when needed. The font panel shows the preferred and fitted sizes when they differ. Reloading clears the composition and custom ant selection.
 
 ## Replace or customize the ant
 
@@ -54,6 +48,7 @@ This project has not been published. Publishing a repository makes its committed
 
 ## Files
 
+- `natural-decay.html`: standalone app for opening directly.
 - `index.html` and `styles.css`: interface and visual design.
 - `js/main.js`: editing, image input, settings, and exports.
 - `js/simulation.js`: canvas mask, ants, trails, feeding, rendering, and PNG output.
@@ -63,4 +58,4 @@ This project has not been published. Publishing a repository makes its committed
 
 ## Verification
 
-The live page was reviewed in the browser after serving it with correct JavaScript module content types. The font list scrolls in an in-page panel; the color swatches and hex field stay in-page; and opening one style panel closes the previous one. The app also stops its animation loop when paused or backgrounded to reduce idle CPU use. Google Fonts require internet access.
+The standalone build was exercised in Microsoft Edge at phone and desktop viewport widths, including with system fonts in place of the online typefaces.

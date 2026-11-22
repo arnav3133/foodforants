@@ -375,13 +375,8 @@ html[data-theme="dark"] .text-drag-handle{border-color:#555;background:#292929;c
 .hue-reset{width:100%;justify-content:center;margin-top:4px}
 html[data-theme="dark"] .hue-panel{border-color:#505050;background:#292929f5;color:#eee}
 html[data-theme="dark"] .hue-chip-row{color:#bbb}
-.restore-ui{display:none;position:absolute;z-index:12;left:50%;bottom:max(10px,env(safe-area-inset-bottom));transform:translateX(-50%);width:42px;height:42px;border:1px solid #fff9;background:#f8f8f8e8;box-shadow:0 6px 22px #0002;backdrop-filter:blur(14px)}
 .app.ui-minimized .brand-pill,.app.ui-minimized .theme-toggle,.app.ui-minimized #export,.app.ui-minimized #tweak-open,.app.ui-minimized .scene-meta,.app.ui-minimized .hint,.app.ui-minimized .edit-hint,.app.ui-minimized #copy,.app.ui-minimized #image-layer,.app.ui-minimized #drawing-layer{display:none!important}
-.app.ui-minimized #edit-toolbar{opacity:0;visibility:hidden;pointer-events:none;transform:translate(-50%,10px);transition:opacity .22s ease,transform .22s cubic-bezier(.2,.75,.25,1),visibility .22s}
 .edit-toolbar{transition:opacity .22s ease,transform .22s cubic-bezier(.2,.75,.25,1),background-color .22s ease,border-color .22s ease,box-shadow .22s ease}
-.restore-ui{transition:opacity .22s ease,transform .22s cubic-bezier(.2,.75,.25,1)}
-.app.ui-minimized #restore-ui{display:grid}
-.app.ui-minimized #minimize-ui{display:none}
 .app.ui-minimized .tweaks[open],.app.ui-minimized .about-dialog[open]{display:none}
 .draw-settings[hidden],.undo-drawing[hidden]{display:none!important}
 .undo-drawing:disabled{opacity:.4;cursor:default}
@@ -398,7 +393,6 @@ html[data-theme="dark"] .hue-chip-row{color:#bbb}
   #export{right:calc(max(13px,env(safe-area-inset-right)) + 52px)}
   .scene-meta{left:max(12px,env(safe-area-inset-left));right:auto;bottom:max(118px,calc(env(safe-area-inset-bottom) + 112px));max-width:calc(100vw - 24px);font-size:8px;letter-spacing:.06em}
   .hue-panel{left:auto;right:0;transform:none;width:min(210px,calc(100vw - 24px))}
-  .app.ui-minimized .restore-ui{bottom:max(8px,env(safe-area-inset-bottom))}
 }
 
 /* Ordered tool dock: playback, mode, mode tools, then the one-button hide toggle. */
@@ -449,14 +443,6 @@ html[data-theme="dark"] .toolbar-controls .type-style>.style-popover>div,html[da
 html[data-theme="dark"] .style-popover .font-panel .size-tool{border-top-color:#505050!important;color:#eee}
 html[data-theme="dark"] .font-panel .size-tool small{color:#aaa}
 .transport #edit{display:grid}
-.app.ui-minimized .brand-pill,.app.ui-minimized .theme-toggle,.app.ui-minimized #export,.app.ui-minimized #tweak-open,.app.ui-minimized .scene-meta,.app.ui-minimized .hint,.app.ui-minimized .edit-hint,.app.ui-minimized #copy,.app.ui-minimized #image-layer,.app.ui-minimized #drawing-layer{display:none!important}
-.app.ui-minimized .edit-toolbar{left:50%;right:auto;bottom:max(8px,env(safe-area-inset-bottom));width:52px;height:52px;padding:5px;transform:translateX(-50%);border-radius:50%;background:#f8f8f8e8}
-.app.ui-minimized #edit-toolbar{opacity:1!important;visibility:visible!important;pointer-events:auto!important;transform:translateX(-50%)!important}
-.app.ui-minimized .toolbar-controls{width:40px;height:40px;justify-content:center}
-.app.ui-minimized .toolbar-controls>:not(.fullscreen-toggle){display:none!important}
-.app.ui-minimized .toolbar-controls .fullscreen-toggle{display:none!important}
-.app.ui-minimized #minimize-ui{display:none!important}
-.app.ui-minimized #restore-ui{display:grid!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
 @media(max-width:700px){
   .edit-toolbar{width:calc(100vw - 20px);max-width:calc(100vw - 20px);bottom:max(8px,env(safe-area-inset-bottom));padding:6px;border-radius:18px}
   .toolbar-controls{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"transport modes modes" "actions actions fullscreen";gap:6px 5px;width:100%}
@@ -500,11 +486,219 @@ html,body,.app,.stage-wrap{max-width:100%;overflow-x:hidden}
 .image-layer,.drawing-layer,#scene{max-width:100%;max-height:100%}
 .type-editor{box-sizing:border-box;overflow-wrap:anywhere;word-break:normal}
 .font-panel,.color-panel,.draw-panel,.hue-panel{box-sizing:border-box;max-width:calc(100vw - 24px)}
-.app.ui-minimized #edit-toolbar{z-index:50}
 #edit-toolbar .toolbar-actions{display:flex!important;visibility:visible!important;opacity:1!important}
 .toolbar-controls .type-style:not([hidden]),.toolbar-controls .image-tools:not([hidden]){display:flex!important;visibility:visible!important;opacity:1!important}
 .toolbar-controls #draw-settings:not([hidden]){display:block!important;visibility:visible!important;opacity:1!important}
 .toolbar-controls #undo-drawing:not([hidden]){display:grid!important;visibility:visible!important;opacity:1!important}
-.app.ui-minimized .toolbar-controls>.fullscreen-toggle{display:grid!important;visibility:visible!important;opacity:1!important;color:var(--ink)!important}
-.app.ui-minimized .toolbar-controls>.fullscreen-toggle .material-symbols-outlined{display:inline-block!important;visibility:visible!important;color:inherit!important}
-.app.ui-minimized #minimize-ui{opacity:1;visibility:visible;pointer-events:auto}
+
+.text-preview{position:absolute;inset:0;z-index:4;width:100%;height:100%;pointer-events:none}
+.text-preview[hidden],.restore-ui[hidden]{display:none!important}
+.material-symbols-outlined svg{display:block;flex:none}
+#copy{top:50%;z-index:5;color:transparent;caret-color:var(--editor-ink,#5b5b5b);min-height:0}
+#copy::selection{color:transparent;background:#7775}
+#copy:focus:not(.is-hidden){overflow:hidden}
+#edit-toolbar{z-index:10}
+#edit-toolbar[hidden]{display:none!important}
+#minimize-ui{transform:none}
+.app.ui-minimized #image-layer:not([hidden]),.app.ui-minimized #drawing-layer:not([hidden]){display:block!important}
+.app.ui-minimized #image-layer .image-item,.app.ui-minimized #drawing-layer{pointer-events:none;outline:none;box-shadow:none}
+.app.ui-minimized .image-confirm-actions,.app.ui-minimized .resize-handle,.app.ui-minimized .text-drag-handle{display:none}
+.toolbar-controls .style-popover{position:static}
+#edit-toolbar .style-popover>div{
+  position:absolute;
+  inset:auto auto calc(100% + 8px) var(--panel-left,0px)!important;
+  transform:translateY(var(--panel-offset-y,0px))!important;
+  max-width:calc(100vw - 20px);
+  max-height:var(--panel-height,calc(100dvh - 130px))!important;
+  overflow:auto;
+  overscroll-behavior:contain;
+}
+.font-panel .font-options{max-height:min(24dvh,170px);overflow:auto}
+.text-target{margin:0 4px 8px;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
+#primary-text-selection{
+  position:absolute;
+  z-index:4;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  border:1px dashed var(--muted);
+  border-radius:8px;
+  opacity:.65;
+  pointer-events:none;
+}
+.text-layer-preview{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#image-layer .live-text-entry{
+  position:relative;
+  padding-inline:6px;
+  color:transparent;
+  caret-color:var(--entry-ink);
+  background:transparent;
+  letter-spacing:-.055em;
+  outline:none;
+}
+.live-text-entry::selection{color:transparent;background:#8886}
+.image-item:not(.selected) .text-drag-handle{visibility:hidden}
+.app.ui-minimized #primary-text-selection{display:none}
+.toolbar-controls>.toolbar-actions{flex-wrap:wrap}
+.image-item{border:0}
+#image-layer{z-index:auto}
+.image-item{z-index:2}
+.image-item.text-draft{z-index:6}
+.image-item.selected{outline:1px solid #555;outline-offset:-1px}
+.image-confirm-actions{left:var(--image-actions-left,4px);right:auto;z-index:3}
+@media(max-width:700px){
+  .toolbar-controls>.toolbar-actions{min-width:0}
+  .toolbar-controls>.toolbar-actions::before{display:none}
+  .toolbar-controls .mode-option{min-width:0}
+  .toolbar-controls .fullscreen-toggle{align-self:start}
+}
+@media(max-width:360px){
+  .toolbar-controls .image-tools .compact-action{min-width:0}
+  .toolbar-controls #image-hue-panel>summary>span:last-child{display:none}
+  .toolbar-controls #image-hue-panel>summary{min-width:34px}
+}
+
+.header-utilities{
+  position:absolute;
+  z-index:4;
+  top:calc(max(18px,env(safe-area-inset-top)) + 56px);
+  left:max(20px,env(safe-area-inset-left));
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.header-utilities .theme-toggle{position:static}
+.session-timer{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  min-height:32px;
+  padding:0 9px;
+  border:1px solid #fff9;
+  border-radius:99px;
+  background:#f8f8f8df;
+  color:#555;
+  backdrop-filter:blur(14px);
+  font:10px "DM Mono",monospace;
+  font-variant-numeric:tabular-nums;
+  pointer-events:none;
+}
+html[data-theme="dark"] :is(.scene-meta,.session-timer){
+  background:#292929e8;
+  border-color:#494949;
+  color:#c4c4c4;
+}
+@media(max-width:600px){
+  .header-utilities{top:calc(max(10px,env(safe-area-inset-top)) + 60px);left:max(12px,env(safe-area-inset-left))}
+}
+.app.ui-minimized .header-utilities{display:none}
+
+/* The dock keeps its layout while its visible surface contracts around the restore button. */
+#edit-toolbar{
+  --dock-background:#f8f8f8e8;
+  --dock-border:#fff9;
+  --dock-hover:#e8e8e8;
+  --dock-motion:280ms cubic-bezier(.25,.8,.3,1);
+  isolation:isolate;
+  background:none;
+  border-color:transparent;
+  box-shadow:none;
+  backdrop-filter:none;
+}
+html[data-theme="dark"] #edit-toolbar{
+  --dock-background:#292929ed;
+  --dock-border:#494949;
+  --dock-hover:#3b3b3b;
+}
+#edit-toolbar::before{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  bottom:-1px;
+  left:50%;
+  width:calc(100% + 2px);
+  height:calc(100% + 2px);
+  box-sizing:border-box;
+  transform:translateX(-50%);
+  border:1px solid var(--dock-border);
+  border-radius:inherit;
+  background:var(--dock-background);
+  box-shadow:0 12px 38px #00000010;
+  backdrop-filter:blur(12px);
+  pointer-events:none;
+  transition:width var(--dock-motion),height var(--dock-motion),border-radius var(--dock-motion);
+}
+#edit-toolbar .toolbar-controls{opacity:1;transition:opacity 170ms ease 65ms}
+.app.ui-minimized #edit-toolbar{pointer-events:none}
+.app.ui-minimized #edit-toolbar::before{width:46px;height:46px;border-radius:50%;transition-delay:45ms}
+.app.ui-minimized #edit-toolbar .toolbar-controls{opacity:0;transition:opacity 130ms ease}
+#edit-toolbar #restore-ui{
+  position:absolute;
+  display:grid;
+  z-index:1;
+  left:0;
+  right:0;
+  bottom:2px;
+  width:40px;
+  height:40px;
+  margin-inline:auto;
+  transform:none;
+  border-color:transparent;
+  background:transparent;
+  box-shadow:none;
+  backdrop-filter:none;
+  color:var(--ink);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity 105ms ease,background-color 160ms ease;
+}
+.app.ui-minimized #edit-toolbar #restore-ui{
+  opacity:1;
+  pointer-events:auto;
+  transition-delay:155ms,0ms;
+}
+#edit-toolbar #restore-ui:hover{background:var(--dock-hover)}
+
+.confirm-dialog{
+  width:min(370px,calc(100vw - 32px));
+  max-height:calc(100dvh - 24px);
+  padding:22px;
+  border:1px solid var(--line);
+  border-radius:20px;
+  background:var(--surface);
+  color:var(--ink);
+  box-shadow:var(--shadow);
+}
+.confirm-dialog::backdrop{background:#0005}
+.confirm-dialog h2{margin:0;font:500 22px/1.15 "Fraunces",serif}
+.confirm-dialog p{margin:10px 0 18px;color:var(--muted);font-size:13px}
+.confirm-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.confirm-actions .panel-action{min-height:40px;padding:0 12px;font-size:12px}
+.confirm-dialog .confirm-actions .confirm-primary{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+
+#copy::placeholder{color:var(--muted);opacity:.65}
+#image-layer .image-item:not(.text-draft){z-index:auto}
+.layer-remove{
+  position:absolute;
+  z-index:7;
+  display:grid;
+  place-items:center;
+  width:34px;
+  height:34px;
+  padding:0;
+  border:1px solid var(--line);
+  border-radius:50%;
+  background:var(--surface);
+  color:var(--ink);
+  box-shadow:0 2px 8px #0003;
+  touch-action:manipulation;
+}
+.image-remove{top:var(--image-remove-top,5px);left:var(--image-remove-left,0)}
+.layer-remove .material-symbols-outlined{font-size:16px}
+.layer-remove:hover{border-color:var(--ink)}
+.layer-remove[hidden],.app.ui-minimized .layer-remove{display:none}
+
+@media(prefers-reduced-motion:reduce){
+  .edit-toolbar,.restore-ui,.mode-option,.style-popover>summary{transition:none}
+  #edit-toolbar::before,#edit-toolbar .toolbar-controls,#edit-toolbar #restore-ui{transition:none}
+}
